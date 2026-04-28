@@ -1,0 +1,639 @@
+import { scAPI } from '@/api/soundcloud';
+import type { SCTrack } from '@/types/soundcloud';
+import { useHistoryStore } from '@/store/history';
+
+const WAVE_QUEUE_SIZE = 12;
+const WAVE_REFUEL_THRESHOLD = 2; // Trigger refuel when 2 tracks remain
+const SEED_COUNT = 50; // Fetch more likes for deep scan
+const INSTANT_LIMIT = 3;
+const DEEP_SCAN_COUNT = 10;
+const DEEP_LIMIT = 20;
+const MAX_ARTIST_IN_A_ROW = 2; // Reduced from 3
+const RECENTLY_LISTENED_COUNT = 10; // Increased from 3
+const GLOBAL_COOLDOWN_HOURS = 48; // Cooldown period for history check
+const BATCH_SIZE = 3; // Requests per batch
+const BATCH_DELAY_MS = 600; // Delay between batches
+
+interface WaveState {
+  queue: SCTrack[];
+  currentIndex: number;
+  isGenerating: boolean;
+  isDeepScanning: boolean;
+  seeds: SCTrack[];
+  playedTracks: Set<number>;
+  likedTrackIds: Set<number>;
+  cachedSeeds: SCTrack[];
+  seedsCacheTime: number;
+  userGenres: Set<string>;
+  isAutonomous: boolean;
+  globalCooldownSet: Set<number>; // Track IDs played in last 48h
+}
+
+const SEEDS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+export class WaveManager {
+  private state: WaveState = {
+    queue: [],
+    currentIndex: 0,
+    isGenerating: false,
+    isDeepScanning: false,
+    seeds: [],
+    playedTracks: new Set(),
+    likedTrackIds: new Set(),
+    cachedSeeds: [],
+    seedsCacheTime: 0,
+    userGenres: new Set(),
+    isAutonomous: false,
+    globalCooldownSet: new Set(),
+  };
+
+  private listeners: Set<(state: WaveState) => void> = new Set();
+
+  constructor() {
+    this.loadLikedTrackIds();
+  }
+
+  private loadLikedTrackIds() {
+    try {
+      // Читаем из общего ключа, который ведёт useUIStore
+      const stored = localStorage.getItem('allLikedIds');
+      if (stored) {
+        const ids = JSON.parse(stored) as (number | string)[];
+        // Фильтруем только числовые ID (треки); строковые — URN плейлистов
+        this.state.likedTrackIds = new Set(
+          ids.filter((id): id is number => typeof id === 'number')
+        );
+      }
+    } catch (e) {
+      console.error('[WaveManager] Failed to load liked track IDs:', e);
+    }
+  }
+
+  private getRecentlyListened(): SCTrack[] {
+    const history = useHistoryStore.getState().entries;
+    return history.slice(0, RECENTLY_LISTENED_COUNT).map(e => e.track);
+  }
+
+  private loadLastSeedId(): number | null {
+    try {
+      const stored = localStorage.getItem('waveLastSeedId');
+      return stored ? parseInt(stored, 10) : null;
+    } catch (e) {
+      console.error('[WaveManager] Failed to load last seed ID:', e);
+      return null;
+    }
+  }
+
+  private saveLastSeedId(seedId: number) {
+    try {
+      localStorage.setItem('waveLastSeedId', seedId.toString());
+    } catch (e) {
+      console.error('[WaveManager] Failed to save last seed ID:', e);
+    }
+  }
+
+  subscribe(listener: (state: WaveState) => void) {
+    this.listeners.add(listener);
+    listener(this.state);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify() {
+    this.listeners.forEach((listener) => listener(this.state));
+  }
+
+  private async fetchSeeds(): Promise<SCTrack[]> {
+    const now = Date.now();
+    if (this.state.cachedSeeds.length > 0 && (now - this.state.seedsCacheTime) < SEEDS_CACHE_TTL) {
+      console.log('[WaveManager] Using cached seeds');
+      return this.state.cachedSeeds;
+    }
+
+    try {
+      const me = await scAPI.getMe();
+      const likes = await scAPI.getUserLikes(me.id, SEED_COUNT, 0);
+      const seeds = likes.collection.map((item: any) => item.track).filter(Boolean);
+      
+      // Extract genres from seeds
+      this.extractUserGenres(seeds);
+      
+      this.state.cachedSeeds = seeds;
+      this.state.seedsCacheTime = now;
+      
+      return seeds;
+    } catch (e) {
+      console.error('[WaveManager] Failed to fetch seeds:', e);
+      return [];
+    }
+  }
+
+  private extractUserGenres(tracks: SCTrack[]) {
+    const genres = new Set<string>();
+    for (const track of tracks) {
+      if (track.genre) {
+        genres.add(track.genre.toLowerCase());
+      }
+    }
+    this.state.userGenres = genres;
+    console.log('[WaveManager] User genres:', [...genres]);
+  }
+
+  private async fetchRelatedTracks(trackId: number, limit = 20): Promise<SCTrack[]> {
+    try {
+      const response = await scAPI.getRelatedTracks(trackId, limit);
+      return response.collection || [];
+    } catch (e) {
+      console.error(`[WaveManager] Failed to fetch related tracks for ${trackId}:`, e);
+      return [];
+    }
+  }
+
+  private async fetchFollowingsTracks(): Promise<SCTrack[]> {
+    try {
+      // Используем тренды как запасной выбор для дискавери
+      const charts = await scAPI.getCharts('trending', 'all-music', 50);
+      return charts.collection.map((item) => item.track);
+    } catch (e) {
+      console.error('[WaveManager] Failed to fetch trending tracks:', e);
+      return [];
+    }
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
+  private selectRandomTracks(tracks: SCTrack[], count: number): SCTrack[] {
+    const shuffled = this.shuffleArray(tracks);
+    return shuffled.slice(0, Math.min(count, shuffled.length));
+  }
+
+  // Stratified seeds: split into 5 buckets, pick 2 from each
+  private selectStratifiedSeeds(tracks: SCTrack[], count: number): SCTrack[] {
+    const bucketCount = 5;
+    const perBucket = Math.ceil(count / bucketCount);
+    const bucketSize = Math.ceil(tracks.length / bucketCount);
+    const selected: SCTrack[] = [];
+
+    for (let i = 0; i < bucketCount; i++) {
+      const start = i * bucketSize;
+      const end = Math.min(start + bucketSize, tracks.length);
+      const bucket = tracks.slice(start, end);
+      const fromBucket = this.selectRandomTracks(bucket, perBucket);
+      selected.push(...fromBucket);
+    }
+
+    return this.shuffleArray(selected).slice(0, count);
+  }
+
+  // Global cooldown: check if track was played in last 48 hours
+  private isOnGlobalCooldown(trackId: number): boolean {
+    const history = useHistoryStore.getState().entries;
+    const cutoffTime = Date.now() - (GLOBAL_COOLDOWN_HOURS * 60 * 60 * 1000);
+    
+    for (const entry of history) {
+      if (entry.track.id === trackId && entry.playedAt > cutoffTime) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  // Similar title filter: remove duplicates like Remix vs Original
+  private normalizeTitle(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/\s*\([^)]*\)\s*$/g, '') // Remove parentheses at end (Remix, Edit, etc.)
+      .replace(/\s*\[[^\]]*\]\s*$/g, '') // Remove brackets at end
+      .replace(/\s*-[\s\w]+$/g, '') // Remove suffix after dash
+      .trim();
+  }
+
+  private hasSimilarTitle(track: SCTrack, existingTracks: SCTrack[]): boolean {
+    const normalized = this.normalizeTitle(track.title);
+    return existingTracks.some(t => this.normalizeTitle(t.title) === normalized);
+  }
+
+  private filterTracks(tracks: SCTrack[]): SCTrack[] {
+    const seen = new Set<number>();
+    const filtered: SCTrack[] = [];
+
+    for (const track of tracks) {
+      if (seen.has(track.id)) continue;
+      if (this.state.likedTrackIds.has(track.id)) continue;
+      if (this.state.playedTracks.has(track.id)) continue;
+      if (this.isOnGlobalCooldown(track.id)) continue;
+
+      seen.add(track.id);
+      filtered.push(track);
+    }
+
+    return filtered;
+  }
+
+  private async applyGenreFilter(tracks: SCTrack[]): Promise<SCTrack[]> {
+    if (this.state.userGenres.size === 0) return tracks;
+
+    const filtered: SCTrack[] = [];
+    const nonMatching: SCTrack[] = [];
+
+    for (const track of tracks) {
+      if (!track.genre) {
+        nonMatching.push(track);
+        continue;
+      }
+
+      const genre = track.genre.toLowerCase();
+      if (this.state.userGenres.has(genre)) {
+        filtered.push(track);
+      } else {
+        nonMatching.push(track);
+      }
+    }
+
+    // Mix: 70% matching, 30% non-matching for diversity
+    const matchingCount = Math.floor(filtered.length * 0.7);
+    const diversityCount = nonMatching.length;
+    
+    // For 30% of diversity tracks, use genre exploration (non-blocking)
+    const explorationCount = Math.floor(diversityCount * 0.3);
+    const standardDiversity = nonMatching.slice(0, diversityCount - explorationCount);
+    const explorationSeeds = nonMatching.slice(diversityCount - explorationCount);
+    
+    // Fire and forget genre exploration - add later if successful
+    if (explorationSeeds.length > 0 && this.state.userGenres.size > 0) {
+      const genres = [...this.state.userGenres];
+      // Don't await - this will run in background
+      this.fetchGenreExploration(genres, explorationSeeds.length).then(tracks => {
+        if (tracks.length > 0) {
+          const seen = new Set(this.state.queue.map(t => t.id));
+          const newTracks = tracks.filter(t => 
+            !seen.has(t.id) && 
+            !this.state.likedTrackIds.has(t.id) && 
+            !this.state.playedTracks.has(t.id)
+          );
+          if (newTracks.length > 0) {
+            this.state.queue.push(...newTracks);
+            console.log('[WaveManager] Genre exploration added', newTracks.length, 'tracks');
+            this.notify();
+          }
+        }
+      }).catch(e => {
+        console.error('[WaveManager] Genre exploration failed:', e);
+      });
+    }
+    
+    const result = [...filtered.slice(0, matchingCount), ...standardDiversity];
+    
+    return this.shuffleArray(result);
+  }
+
+  private async fetchGenreExploration(genres: string[], count: number): Promise<SCTrack[]> {
+    const results: SCTrack[] = [];
+    const attempts = Math.min(count, genres.length);
+    
+    for (let i = 0; i < attempts; i++) {
+      const randomGenre = genres[Math.floor(Math.random() * genres.length)];
+      const randomOffset = Math.floor(Math.random() * 50);
+      try {
+        const genreTracks = await this.fetchGenreTracks(randomGenre, 5, randomOffset);
+        results.push(...genreTracks.slice(0, 2));
+      } catch (e) {
+        // Silently fail individual genre searches
+      }
+    }
+    
+    return results;
+  }
+
+  private applyVibeFilter(tracks: SCTrack[]): SCTrack[] {
+    const result: SCTrack[] = [];
+    const artistCounts = new Map<number, number>();
+
+    for (const track of tracks) {
+      const artistId = track.user?.id;
+      if (!artistId) {
+        result.push(track);
+        continue;
+      }
+
+      const count = artistCounts.get(artistId) || 0;
+      if (count < MAX_ARTIST_IN_A_ROW) {
+        result.push(track);
+        artistCounts.set(artistId, count + 1);
+      }
+      // Превышен лимит артиста — просто пропускаем трек, без сброса счётчика
+    }
+
+    return result;
+  }
+
+  // Apply similar title filter to remove duplicates like Remix vs Original
+  private applyTitleFilter(tracks: SCTrack[]): SCTrack[] {
+    const result: SCTrack[] = [];
+
+    for (const track of tracks) {
+      if (!this.hasSimilarTitle(track, result)) {
+        result.push(track);
+      }
+    }
+
+    return result;
+  }
+
+  // Batched requests to avoid 403 errors
+  private async batchedFetchRelated(seedIds: number[], limit: number): Promise<SCTrack[]> {
+    const results: SCTrack[] = [];
+
+    for (let i = 0; i < seedIds.length; i += BATCH_SIZE) {
+      const batch = seedIds.slice(i, i + BATCH_SIZE);
+      const batchPromises = batch.map(id => this.fetchRelatedTracks(id, limit));
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults.flat());
+
+      // Pause between batches (except after last batch)
+      if (i + BATCH_SIZE < seedIds.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+      }
+    }
+
+    return results;
+  }
+
+  // Recursive discovery: get related of related for 30% of requests
+  private async fetchRelatedRecursive(seedId: number, limit: number): Promise<SCTrack[]> {
+    const firstLevel = await this.fetchRelatedTracks(seedId, limit);
+    if (firstLevel.length === 0) return [];
+
+    const randomTrack = firstLevel[Math.floor(Math.random() * firstLevel.length)];
+    const secondLevel = await this.fetchRelatedTracks(randomTrack.id, limit);
+
+    return [...firstLevel, ...secondLevel];
+  }
+
+  // Genre exploration: search by genre tag instead of related
+  private async fetchGenreTracks(genre: string, limit: number, offset: number): Promise<SCTrack[]> {
+    try {
+      const response = await scAPI.search(genre, 'tracks', limit, offset);
+      return response.collection.filter((r): r is SCTrack => r.kind === 'track');
+    } catch (e) {
+      console.error('[WaveManager] Failed to fetch genre tracks:', e);
+      return [];
+    }
+  }
+
+  // Stage 1: Instant start with random seed
+  private async generateInstant(): Promise<SCTrack[]> {
+    console.log('[WaveManager] Stage 1: Instant start');
+    this.state.isGenerating = true;
+    this.notify();
+
+    try {
+      const seeds = await this.fetchSeeds();
+      if (seeds.length === 0) {
+        console.warn('[WaveManager] No seeds found, trying followings');
+        const followingsTracks = await this.fetchFollowingsTracks();
+        return this.filterTracks(followingsTracks.slice(0, 1));
+      }
+
+      this.state.seeds = seeds;
+
+      // Take random track from top 20 recent likes
+      const seedBase = seeds.slice(0, 20);
+      const lastSeedId = this.loadLastSeedId();
+      
+      // Select random seed, excluding last played
+      let randomSeed: SCTrack;
+      let attempts = 0;
+      const maxAttempts = seedBase.length;
+      
+      do {
+        randomSeed = seedBase[Math.floor(Math.random() * seedBase.length)];
+        attempts++;
+      } while (randomSeed.id === lastSeedId && attempts < maxAttempts);
+      
+      // Save this seed as last played
+      this.saveLastSeedId(randomSeed.id);
+      
+      console.log('[WaveManager] Using random seed from top 20:', randomSeed.title);
+
+      // Single fast request with limit=5 for more options
+      const related = await this.fetchRelatedTracks(randomSeed.id, 5);
+      
+      if (related.length === 0) {
+        console.warn('[WaveManager] No related tracks found');
+        return [];
+      }
+
+      // Shuffle first 3-5 results and pick one for start
+      const shuffleCount = Math.min(related.length, 5);
+      const shuffled = this.shuffleArray(related.slice(0, shuffleCount));
+      const filtered = this.filterTracks(shuffled);
+
+      console.log('[WaveManager] Selected instant track:', filtered[0]?.title);
+      return filtered.slice(0, 1);
+    } finally {
+      this.state.isGenerating = false;
+      this.notify();
+    }
+  }
+
+  // Stage 2: Deep scan in background
+  private async deepScan(): Promise<void> {
+    console.log('[WaveManager] Stage 2: Deep scan started');
+    this.state.isDeepScanning = true;
+    this.notify();
+
+    try {
+      let seeds = await this.fetchSeeds();
+      
+      // Add recently listened tracks to seeds for evolution
+      const recentlyListened = this.getRecentlyListened();
+      if (recentlyListened.length > 0) {
+        seeds = [...seeds, ...recentlyListened];
+        console.log('[WaveManager] Added recently listened tracks to seeds');
+      }
+
+      if (seeds.length === 0) return;
+
+      // Stratified seeds: split into 5 buckets, pick 2 from each
+      const stratifiedSeeds = this.selectStratifiedSeeds(seeds, DEEP_SCAN_COUNT);
+      console.log('[WaveManager] Deep scan seeds (stratified):', stratifiedSeeds.map(s => s.title));
+
+      // Batched requests with recursive discovery for 30%
+      const relatedTracks: SCTrack[] = [];
+      const seedIds = stratifiedSeeds.map(s => s.id);
+      
+      for (let i = 0; i < seedIds.length; i += BATCH_SIZE) {
+        const batch = seedIds.slice(i, i + BATCH_SIZE);
+        
+        for (const seedId of batch) {
+          // 30% chance of recursive discovery
+          const useRecursive = Math.random() < 0.3;
+          let tracks: SCTrack[];
+          
+          if (useRecursive) {
+            console.log('[WaveManager] Using recursive discovery for seed:', seedId);
+            tracks = await this.fetchRelatedRecursive(seedId, DEEP_LIMIT);
+          } else {
+            tracks = await this.fetchRelatedTracks(seedId, DEEP_LIMIT);
+          }
+          
+          relatedTracks.push(...tracks);
+        }
+
+        // Pause between batches (except after last batch)
+        if (i + BATCH_SIZE < seedIds.length) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+        }
+      }
+
+      console.log('[WaveManager] Deep scan got', relatedTracks.length, 'tracks');
+
+      // Mix with seeds
+      let mixed = [...seeds, ...relatedTracks];
+      
+      // Apply filters
+      let filtered = this.filterTracks(mixed);
+      console.log('[WaveManager] After filter:', filtered.length);
+
+      // Genre matching with exploration
+      filtered = await this.applyGenreFilter(filtered);
+      console.log('[WaveManager] After genre filter:', filtered.length);
+
+      // Similar title filter
+      filtered = this.applyTitleFilter(filtered);
+      console.log('[WaveManager] After title filter:', filtered.length);
+
+      // Vibe filter (artist diversity)
+      filtered = this.applyVibeFilter(filtered);
+      console.log('[WaveManager] After vibe filter:', filtered.length);
+
+      // Seamless refueling - push to end of queue
+      const seen = new Set(this.state.queue.map(t => t.id));
+      const newFiltered: SCTrack[] = [];
+
+      for (const track of filtered) {
+        if (seen.has(track.id)) continue;
+        if (this.state.likedTrackIds.has(track.id)) continue;
+        if (this.state.playedTracks.has(track.id)) continue;
+
+        seen.add(track.id);
+        newFiltered.push(track);
+      }
+
+      this.state.queue.push(...newFiltered);
+      console.log('[WaveManager] Deep scan added', newFiltered.length, 'tracks to queue');
+      this.notify();
+    } catch (e) {
+      console.error('[WaveManager] Deep scan failed:', e);
+    } finally {
+      this.state.isDeepScanning = false;
+      this.notify();
+    }
+  }
+
+  // Autonomous refueling in the air
+  private async refuelInAir(): Promise<void> {
+    if (this.state.isDeepScanning) return;
+    
+    const tracksRemaining = this.state.queue.length - this.state.currentIndex;
+    console.log('[WaveManager] Tracks remaining:', tracksRemaining);
+    
+    if (tracksRemaining <= WAVE_REFUEL_THRESHOLD) {
+      console.log('[WaveManager] Refueling in air...');
+      await this.deepScan();
+    }
+  }
+
+  async refreshWave(): Promise<void> {
+    this.state.queue = [];
+    this.state.currentIndex = 0;
+    this.state.playedTracks.clear();
+    this.state.isAutonomous = true;
+    
+    // Stage 1: Instant start
+    const instantTracks = await this.generateInstant();
+    this.state.queue = instantTracks;
+    this.notify();
+
+    // Stage 2: Deep scan in background
+    setTimeout(() => this.deepScan(), 1000);
+  }
+
+  async startWave(): Promise<void> {
+    if (this.state.queue.length === 0) {
+      await this.refreshWave();
+    }
+  }
+
+  async getNextTrack(): Promise<SCTrack | null> {
+    // Autonomous refueling - check if we need to refuel
+    await this.refuelInAir();
+
+    if (this.state.currentIndex >= this.state.queue.length) {
+      console.warn('[WaveManager] Queue empty, triggering emergency refuel');
+      await this.deepScan();
+      
+      if (this.state.currentIndex >= this.state.queue.length) {
+        return null;
+      }
+    }
+
+    const track = this.state.queue[this.state.currentIndex];
+    this.state.currentIndex++;
+    this.state.playedTracks.add(track.id);
+    
+    // Add to global cooldown set
+    this.state.globalCooldownSet.add(track.id);
+    
+    this.notify();
+
+    return track;
+  }
+
+  async requestMoreTracks(): Promise<void> {
+    if (this.state.isDeepScanning || this.state.isGenerating) return;
+    await this.deepScan();
+  }
+
+  updateLikedTrackIds(ids: Set<number>): void {
+    this.state.likedTrackIds = ids;
+    // Не сохраняем отдельно — источник истины allLikedIds ведёт useUIStore
+  }
+
+  getCurrentState(): WaveState {
+    return { ...this.state };
+  }
+
+  getTuningStatus(): string {
+    if (this.state.isGenerating) {
+      return 'Мгновенный старт...';
+    }
+    if (this.state.isDeepScanning) {
+      return 'Глубокий анализ...';
+    }
+    // Show deep scan status if queue is small (less than 5 tracks)
+    if (this.state.isAutonomous && this.state.queue.length < 5) {
+      return 'Глубокий анализ...';
+    }
+    if (this.state.isAutonomous) {
+      return `Автономный режим: ${this.state.queue.length - this.state.currentIndex} треков в очереди`;
+    }
+    if (this.state.seeds.length === 0) {
+      return 'Ожидание старта...';
+    }
+    return `На основе ${this.state.seeds.length} лайков`;
+  }
+}
+
+// Singleton instance
+export const waveManager = new WaveManager();
