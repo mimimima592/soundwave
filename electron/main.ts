@@ -206,6 +206,18 @@ app.on('ready', async () => {
     }
   });
 
+  // IPC handler для установки обновления
+  ipcMain.handle('updater:install', () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { autoUpdater } = require('electron-updater');
+      console.log('[AutoUpdater] Installing update...');
+      autoUpdater.quitAndInstall();
+    } catch (err) {
+      console.error('[AutoUpdater] Install error:', err);
+    }
+  });
+
   // Автодетект порта Clash
   detectedProxyPort = await detectClashPort();
 

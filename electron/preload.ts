@@ -145,6 +145,16 @@ const electronAPI = {
   updater: {
     checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates') as Promise<any>,
     installUpdate: () => ipcRenderer.invoke('updater:install'),
+    onUpdateAvailable: (callback: (version: string) => void) => {
+      const listener = (_: unknown, version: string) => callback(version);
+      ipcRenderer.on('updater:update-available', listener);
+      return () => ipcRenderer.removeListener('updater:update-available', listener);
+    },
+    onUpdateDownloaded: (callback: (version: string) => void) => {
+      const listener = (_: unknown, version: string) => callback(version);
+      ipcRenderer.on('updater:update-downloaded', listener);
+      return () => ipcRenderer.removeListener('updater:update-downloaded', listener);
+    },
   },
   platform: process.platform,
 };
