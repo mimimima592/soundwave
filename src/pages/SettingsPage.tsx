@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Palette, LogIn, LogOut, Check, X, Plus, Edit2, ImageIcon,
-  Disc3, Tv2, Copy, CheckCheck, ChevronDown, Send, Zap,
+  Disc3, Tv2, Copy, CheckCheck, ChevronDown, Send, Zap, RefreshCw,
 } from 'lucide-react';
 import { useUIStore, type BackgroundType } from '@/store/ui';
 import type { Theme } from '@/themes/themes';
@@ -70,6 +70,8 @@ export function SettingsPage() {
   const [staticFrames, setStaticFrames] = useState<Record<string, string>>({});
   const [cookiesInput, setCookiesInput] = useState('');
   const [widgetUrlCopied, setWidgetUrlCopied] = useState(false);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateCheckResult, setUpdateCheckResult] = useState<string | null>(null);
 
   const handleSaveToken = () => {
     const t = tokenInput.trim(); if (!t) return;
@@ -92,6 +94,23 @@ export function SettingsPage() {
       const token = await window.electron?.auth.soundcloud(hasCookies);
       if (token) { setOAuthToken(token); scAPI.setOAuthToken(token); setCookiesInput(''); }
     } catch { } finally { setIsAuthenticating(false); }
+  };
+
+  const handleCheckUpdates = async () => {
+    setIsCheckingUpdates(true);
+    setUpdateCheckResult(null);
+    try {
+      const result = await window.electron?.updater?.checkForUpdates();
+      if (result?.updateInfo) {
+        setUpdateCheckResult(`Доступно обновление ${result.updateInfo.version}`);
+      } else {
+        setUpdateCheckResult('Обновлений нет');
+      }
+    } catch (err) {
+      setUpdateCheckResult('Ошибка проверки обновлений');
+    } finally {
+      setIsCheckingUpdates(false);
+    }
   };
 
   useEffect(() => {
@@ -304,6 +323,26 @@ export function SettingsPage() {
           onChange={setFreezeHoverOnScroll}
           icon={<Zap size={15} />}
         />
+      </SettingsCard>
+
+      <SectionTitle>Обновления</SectionTitle>
+      <SettingsCard>
+        <div className="space-y-3">
+          <button
+            onClick={handleCheckUpdates}
+            disabled={isCheckingUpdates}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all disabled:opacity-50"
+            style={{ background: 'rgb(var(--theme-accent))', color: 'rgb(var(--theme-accent-fg))' }}
+          >
+            <RefreshCw size={15} className={isCheckingUpdates ? 'animate-spin' : ''} />
+            {isCheckingUpdates ? 'Проверка...' : 'Проверить обновления'}
+          </button>
+          {updateCheckResult && (
+            <div className="text-[12px]" style={{ color: 'rgb(var(--theme-text-dim))' }}>
+              {updateCheckResult}
+            </div>
+          )}
+        </div>
       </SettingsCard>
 
 

@@ -166,6 +166,13 @@ app.on('ready', async () => {
       });
       console.log('[AutoUpdater] Checking for updates...');
       autoUpdater.checkForUpdatesAndNotify();
+
+      // Периодическая проверка каждые 30 минут
+      setInterval(() => {
+        console.log('[AutoUpdater] Periodic check...');
+        autoUpdater.checkForUpdates();
+      }, 30 * 60 * 1000);
+
       autoUpdater.on('update-available', (info: any) => {
         console.log('[AutoUpdater] Update available:', info.version);
         mainWindow?.webContents.send('updater:update-available', info.version);
@@ -184,6 +191,20 @@ app.on('ready', async () => {
       console.warn('[AutoUpdater] electron-updater not installed, skipping.');
     }
   }
+
+  // IPC handler для ручной проверки обновлений
+  ipcMain.handle('updater:checkForUpdates', async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { autoUpdater } = require('electron-updater');
+      console.log('[AutoUpdater] Manual check triggered');
+      const result = await autoUpdater.checkForUpdates();
+      return result;
+    } catch (err) {
+      console.error('[AutoUpdater] Manual check error:', err);
+      return null;
+    }
+  });
 
   // Автодетект порта Clash
   detectedProxyPort = await detectClashPort();

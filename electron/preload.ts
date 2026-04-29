@@ -142,6 +142,10 @@ const electronAPI = {
       bgType: string;
     }) => ipcRenderer.invoke('widget:update', data),
   },
+  updater: {
+    checkForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates') as Promise<any>,
+    installUpdate: () => ipcRenderer.invoke('updater:install'),
+  },
   platform: process.platform,
 };
 
