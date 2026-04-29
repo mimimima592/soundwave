@@ -193,6 +193,7 @@ app.on('ready', async () => {
   }
 
   // IPC handler для ручной проверки обновлений
+  ipcMain.removeHandler('updater:checkForUpdates');
   ipcMain.handle('updater:checkForUpdates', async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -207,6 +208,7 @@ app.on('ready', async () => {
   });
 
   // IPC handler для установки обновления
+  ipcMain.removeHandler('updater:install');
   ipcMain.handle('updater:install', () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires

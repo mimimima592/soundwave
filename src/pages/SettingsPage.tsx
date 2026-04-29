@@ -327,21 +327,27 @@ export function SettingsPage() {
 
       <SectionTitle>Обновления</SectionTitle>
       <SettingsCard>
-        <div className="space-y-3">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center mt-0.5"
+              style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))' }}>
+              <RefreshCw size={15} />
+            </div>
+            <div>
+              <div className="text-[13.5px] font-medium">Проверить обновления</div>
+              <div className="text-[12px] mt-0.5" style={{ color: 'rgb(var(--theme-text-dim))' }}>
+                {updateCheckResult || 'Проверить наличие новой версии'}
+              </div>
+            </div>
+          </div>
           <button
             onClick={handleCheckUpdates}
             disabled={isCheckingUpdates}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all disabled:opacity-50"
-            style={{ background: 'rgb(var(--theme-accent))', color: 'rgb(var(--theme-accent-fg))' }}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+            style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))' }}
           >
-            <RefreshCw size={15} className={isCheckingUpdates ? 'animate-spin' : ''} />
-            {isCheckingUpdates ? 'Проверка...' : 'Проверить обновления'}
+            <RefreshCw size={16} className={isCheckingUpdates ? 'animate-spin' : ''} />
           </button>
-          {updateCheckResult && (
-            <div className="text-[12px]" style={{ color: 'rgb(var(--theme-text-dim))' }}>
-              {updateCheckResult}
-            </div>
-          )}
         </div>
       </SettingsCard>
 
