@@ -3,6 +3,7 @@ import type { ReactNode, ErrorInfo } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useUIStore } from '@/store/ui';
 import { usePlayerStore } from '@/store/player';
+import { useListenPartyStore } from '@/store/listenParty';
 import { scAPI } from '@/api/soundcloud';
 import { useHistoryStore } from '@/store/history';
 import { useAudio } from '@/hooks/useAudio';
@@ -93,6 +94,19 @@ function AppContent() {
     hydratePlayer();
     useHistoryStore.getState().init();
   }, [hydrate, hydratePlayer]);
+
+  // Очистка Listen Party при закрытии приложения
+  useEffect(() => {
+    const handleBeforeQuit = () => {
+      useListenPartyStore.getState().reset();
+    };
+
+    const cleanup = window.electron?.window?.onBeforeQuit?.(handleBeforeQuit);
+
+    return () => {
+      cleanup?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (hydrated) scAPI.setOAuthToken(oauthToken);

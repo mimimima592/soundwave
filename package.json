@@ -79,8 +79,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-github-username",
-      "repo": "your-repo-name"
+      "owner": "mimimima592",
+      "repo": "soundwave"
     }
   }
 }

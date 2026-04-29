@@ -39,6 +39,9 @@ interface PlayerState {
   // Таймаут для отправки истории прослушивания
   playHistoryTimeout: NodeJS.Timeout | null;
 
+  // Защита от race condition при быстром переключении треков
+  currentPlayTrackId: number | null;
+
   // Actions
   setAudioEl: (el: HTMLAudioElement | null) => void;
   playTrack: (track: SCTrack, queue?: SCTrack[], index?: number, playlistId?: number | string | null) => Promise<void>;
@@ -85,14 +88,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentPlaylistId: null,
   queue: [],
   queueIndex: 0,
+  audioEl: null,
   shuffle: false,
   shuffleHistory: [],
   repeat: 'off',
   autoplay: true, // default enabled
   isWaveMode: false,
-  audioEl: null,
   pendingSeek: null,
   playHistoryTimeout: null,
+  currentPlayTrackId: null,
 
   setAudioEl: (el) => {
     set({ audioEl: el });
@@ -194,18 +198,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { audioEl, playHistoryTimeout, currentTrack } = get();
     if (!audioEl) return;
 
-    // Сбрасываем плейлист — играет отдельный трек (если не передан playlistId)
-    set({ currentPlaylistId: playlistId });
-
-    // Отменяем предыдущий таймаут отправки истории только если трек реально изменился
-    if (playHistoryTimeout && currentTrack?.id !== track.id) {
+    // Очищаем предыдущий таймаут
+    if (playHistoryTimeout) {
       clearTimeout(playHistoryTimeout);
     }
 
-    set({ isLoading: true, currentTrack: track, playHistoryTimeout: null });
+    const playId = track.id;
+    set({ currentPlayTrackId: playId, isLoading: true, currentTrack: track, playHistoryTimeout: null });
+
+    // Сбрасываем плейлист — играет отдельный трек (если не передан playlistId)
+    set({ currentPlaylistId: playlistId });
 
     try {
       const { url, isHls } = await scAPI.getStreamUrl(track);
+
+      // Проверяем что это всё ещё актуальный трек
+      if (get().currentPlayTrackId !== playId) return;
 
       if (isHls) {
         // SoundCloud часто отдаёт HLS. Для MVP ограничиваемся
@@ -224,7 +232,13 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
 
       set({ streamUrl: url });
-      await audioEl.play();
+      try {
+        await audioEl.play();
+        set({ isPlaying: true });
+      } catch (err) {
+        console.error('[Player] Ошибка воспроизведения:', err);
+        set({ isPlaying: false, isLoading: false });
+      }
 
       // Локальная история
       useHistoryStore.getState().addEntry(track);
@@ -343,9 +357,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     if (shuffle && shuffleHistory.length > 0) {
       // В режиме шаффла возвращаемся по истории
       const newHistory = [...shuffleHistory];
-      const prevIndex = newHistory.pop()!;
+      const prevIndex = newHistory.pop();
       set({ shuffleHistory: newHistory });
-      if (queue[prevIndex]) playTrack(queue[prevIndex], queue, prevIndex);
+      if (prevIndex !== undefined && queue[prevIndex]) {
+        playTrack(queue[prevIndex], queue, prevIndex);
+      }
       return;
     }
 
@@ -418,7 +434,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       try {
         const related = await scAPI.getRelatedTracks(currentTrack.id, 10);
         if (related.collection.length > 0) {
-          related.collection.forEach(track => addToQueue(track));
+          related.collection
+            .filter((track) => track && typeof track.id === 'number' && track.title)
+            .forEach(track => addToQueue(track as SCTrack));
           next();
           return;
         }

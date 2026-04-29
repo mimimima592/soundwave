@@ -13,6 +13,11 @@ const electronAPI = {
       ipcRenderer.on('window:maximized', listener);
       return () => ipcRenderer.removeListener('window:maximized', listener);
     },
+    onBeforeQuit: (cb: () => void) => {
+      const listener = () => cb();
+      ipcRenderer.on('app:before-quit', listener);
+      return () => ipcRenderer.removeListener('app:before-quit', listener);
+    },
   },
   settings: {
     get: (key: string) => ipcRenderer.invoke('settings:get', key),

@@ -11,7 +11,7 @@ async function getPeer() {
   return PeerClass;
 }
 
-const HEARTBEAT_INTERVAL = 10_000;
+const HEARTBEAT_INTERVAL = 5_000;
 
 function applyPartyEvent(evt: PartyEvent) {
   const { type, position, timestamp } = evt;
@@ -21,7 +21,7 @@ function applyPartyEvent(evt: PartyEvent) {
 
   switch (type) {
     case 'PLAY': {
-      player.seek((position ?? 0) + latency);
+      player.seek(position ?? 0);
       player.resume();
       break;
     }
@@ -31,7 +31,14 @@ function applyPartyEvent(evt: PartyEvent) {
       break;
     }
     case 'SEEK': {
-      player.seek((position ?? 0) + latency);
+      player.seek(position ?? 0);
+      // Дополнительная коррекция через 100ms для надежности
+      setTimeout(() => {
+        const currentPos = usePlayerStore.getState().currentTime;
+        if (Math.abs(currentPos - (position ?? 0)) > 0.5) {
+          player.seek(position ?? 0);
+        }
+      }, 100);
       break;
     }
     case 'TRACK': {
@@ -66,7 +73,11 @@ function applyPartyEvent(evt: PartyEvent) {
       if (position === undefined) break;
       const serverTime = position + latency;
       const localTime = usePlayerStore.getState().currentTime;
-      if (Math.abs(localTime - serverTime) > 2) player.seek(serverTime);
+      const isPlaying = usePlayerStore.getState().isPlaying;
+      // Синхронизируем только если расхождение > 3 сек и трек играет
+      if (Math.abs(localTime - serverTime) > 3 && isPlaying) {
+        player.seek(serverTime);
+      }
       break;
     }
   }
@@ -188,6 +199,12 @@ export function useListenParty() {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          // Бесплатный TURN сервер от Twilio (требует регистрации)
+          // Для production лучше использовать свой TURN сервер
+          { urls: 'turn:global.turn.twilio.com:3478?transport=tcp', username: '', credential: '' },
         ],
       },
     });
@@ -238,6 +255,12 @@ export function useListenParty() {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          // Бесплатный TURN сервер от Twilio (требует регистрации)
+          // Для production лучше использовать свой TURN сервер
+          { urls: 'turn:global.turn.twilio.com:3478?transport=tcp', username: '', credential: '' },
         ],
       },
     });
@@ -246,7 +269,17 @@ export function useListenParty() {
     peer.on('open', () => {
       const conn = peer.connect(code.trim(), { reliable: true });
 
+      // Таймаут на подключение (60 секунд)
+      const connectionTimeout = setTimeout(() => {
+        if (useListenPartyStore.getState().status !== 'connected') {
+          console.error('[ListenParty] Таймаут подключения к лидеру');
+          conn.close();
+          store.setStatus('disconnected');
+        }
+      }, 60000);
+
       conn.on('open', () => {
+        clearTimeout(connectionTimeout);
         store.setSessionCode(code.trim());
         store.setConnectionInstance(conn);
         store.setDataChannel(conn);
@@ -273,7 +306,9 @@ export function useListenParty() {
               return;
             }
             if (roleRef.current === 'listener') applyPartyEvent(evt);
-          } catch {}
+          } catch (err) {
+            console.error('[ListenParty] Ошибка парсинга события:', err, 'Raw data:', raw);
+          }
         };
 
         const onClose = () => {
@@ -288,7 +323,9 @@ export function useListenParty() {
 
       conn.on('error', (err: any) => {
         console.error('[ListenParty] join conn error:', err);
-        store.setStatus('idle');
+        store.setStatus('disconnected');
+        // Добавляем информацию об ошибке в состояние для отображения пользователю
+        console.error('[ListenParty] Не удалось подключиться к лидеру. Проверьте код сессии и убедитесь что друг все еще хостит сессию.');
       });
     });
 

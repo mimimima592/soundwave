@@ -32,25 +32,25 @@ export function useListenPartySync() {
   useEffect(() => {
     if (!isActive) { prevTimeRef.current = 0; return; }
 
-    return usePlayerStore.subscribe(
-      (state) => state.currentTime,
-      (currentTime) => {
-        const prev = prevTimeRef.current;
-        const delta = Math.abs(currentTime - prev);
-        const isPlaying = usePlayerStore.getState().isPlaying;
-        const isNatural = isPlaying && delta < 2;
-        if (!isNatural && delta > 1.5) {
-          if (seekDebounceRef.current) clearTimeout(seekDebounceRef.current);
-          seekDebounceRef.current = setTimeout(() => {
-            useListenPartyStore.getState().broadcastEvent({
-              type: 'SEEK',
-              position: usePlayerStore.getState().currentTime,
-            });
-          }, 150);
-        }
-        prevTimeRef.current = currentTime;
+    return usePlayerStore.subscribe((state, prevState) => {
+      const currentTime = state.currentTime;
+      const prev = prevTimeRef.current;
+      const delta = Math.abs(currentTime - prev);
+      const isPlaying = state.isPlaying;
+      // Уменьшили порог с 1.5 до 0.8 сек для детекции малых перемоток
+      // Убрали isNatural проверку для более точной детекции seek
+      if (delta > 0.8) {
+        if (seekDebounceRef.current) clearTimeout(seekDebounceRef.current);
+        // Уменьшили debounce с 150 до 50ms для быстрой реакции
+        seekDebounceRef.current = setTimeout(() => {
+          useListenPartyStore.getState().broadcastEvent({
+            type: 'SEEK',
+            position: currentTime,
+          });
+        }, 50);
       }
-    );
+      prevTimeRef.current = currentTime;
+    });
   }, [isActive]);
 
   // ── TRACK ─────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export function useListenPartySync() {
     if (!isActive) { prevTrackRef.current = null; return; }
 
     return usePlayerStore.subscribe((state) => {
-      const { currentTrack, queue, queueIndex } = state;
+      const { currentTrack, queue, queueIndex, currentTime } = state;
       if (!currentTrack) return;
       if (prevTrackRef.current === currentTrack.id) return;
       prevTrackRef.current = currentTrack.id;
@@ -68,7 +68,7 @@ export function useListenPartySync() {
         trackData: currentTrack,
         queue,
         queueIndex,
-        position: 0,
+        position: currentTime,
       });
     });
   }, [isActive]);

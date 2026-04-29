@@ -58,7 +58,7 @@ export function ListenPartyModal({ onClose }: Props) {
   };
 
   const elapsed = connectedSince ? Math.floor((Date.now() - connectedSince) / 60000) : 0;
-  const totalInSession = role === 'leader' ? listeners.length + 1 : listenerCount + 1;
+  const totalInSession = role === 'leader' ? listeners.length + 1 : listenerCount;
 
   return (
     <div

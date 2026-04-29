@@ -47,6 +47,7 @@ interface UIState {
   toggleLike: (trackId: number, track?: SCTrack) => Promise<void>;
   isTrackLiked: (trackId: number) => boolean;
   addServerLikedIds: (ids: number[]) => void;
+  isUpdatingLikes: boolean;
 
   // Лайки плейлистов (optimistic + синк с сервером)
   likedPlaylistIds: Set<string | number>; // Поддержка и ID (number) и URN (string) для системных плейлистов
@@ -222,20 +223,28 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   likedTrackIds: new Set<number>(),
   optimisticTracks: new Map<number, SCTrack>(),
+  isUpdatingLikes: false,
 
   addServerLikedIds: (ids) => {
-    const { likedTrackIds, allLikedIds } = get();
-    const newSet = new Set(likedTrackIds);
-    const newAllLiked = new Set(allLikedIds);
-    for (const id of ids) {
-      if (!touchedTrackIds.has(id)) {
-        newSet.add(id);
-        newAllLiked.add(id);
+    const { isUpdatingLikes, likedTrackIds, allLikedIds } = get();
+    if (isUpdatingLikes) return;
+
+    set({ isUpdatingLikes: true });
+    try {
+      const newSet = new Set(likedTrackIds);
+      const newAllLiked = new Set(allLikedIds);
+      for (const id of ids) {
+        if (!touchedTrackIds.has(id)) {
+          newSet.add(id);
+          newAllLiked.add(id);
+        }
       }
+      set({ likedTrackIds: newSet, allLikedIds: newAllLiked });
+      // Сохраняем в localStorage
+      localStorage.setItem(ALL_LIKED_IDS_KEY, JSON.stringify([...newAllLiked]));
+    } finally {
+      set({ isUpdatingLikes: false });
     }
-    set({ likedTrackIds: newSet, allLikedIds: newAllLiked });
-    // Сохраняем в localStorage
-    localStorage.setItem(ALL_LIKED_IDS_KEY, JSON.stringify([...newAllLiked]));
   },
 
   likedPlaylistIds: new Set<string | number>(),
@@ -277,7 +286,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     const { oauthToken, likedTrackIds, optimisticTracks, allLikedIds } = get();
     // Защита: id может прийти строкой через JSON (например из DataChannel в Listen Party)
     const numericId = typeof trackId === 'string' ? parseInt(trackId, 10) : trackId;
-    if (!numericId || isNaN(numericId)) return;
+    if (!numericId || typeof numericId !== 'number' || isNaN(numericId)) return;
     trackId = numericId;
     const wasLiked = likedTrackIds.has(trackId);
 
@@ -407,7 +416,7 @@ export const useUIStore = create<UIState>((set, get) => ({
         set({ likedPlaylistIds, optimisticPlaylists, allLikedIds });
         if (!wasLiked && playlist) {
           removeLibraryPlaylist(playlistId);
-        } else if (playlist) {
+        } else if (wasLiked && playlist) {
           addLibraryPlaylist(playlist);
         }
         localStorage.setItem(ALL_LIKED_IDS_KEY, JSON.stringify([...allLikedIds]));

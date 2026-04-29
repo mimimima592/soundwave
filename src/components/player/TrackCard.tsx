@@ -4,6 +4,7 @@ import { useState, memo, useCallback } from 'react';
 import type { SCTrack } from '@/types/soundcloud';
 import { usePlayerStore } from '@/store/player';
 import { useUIStore } from '@/store/ui';
+import { useListenPartyStore } from '@/store/listenParty';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTime, hiResArtwork, formatCount, cn } from '@/utils/format';
 
@@ -280,6 +281,8 @@ export function TrackCard({ track, queue, index, variant = 'grid' }: Props) {
   })));
   const allLikedIds = useUIStore((s) => s.allLikedIds);
 
+  const { role, status } = useListenPartyStore();
+
   const isPlaylist = (track as any).kind === 'playlist' || (track as any).isSystemPlaylist || (track as any).urn?.startsWith('soundcloud:system-playlists:');
   const trackUrn = (track as any).urn;
   const isCurrent = !isPlaylist && currentTrackId === track.id;
@@ -295,6 +298,11 @@ export function TrackCard({ track, queue, index, variant = 'grid' }: Props) {
   const liked = isLiked(track.id, trackUrn);
 
   const handlePlay = useCallback(async () => {
+    // Блокируем запуск треков для слушателей в Listen Party
+    if (role === 'listener' && status === 'connected') {
+      return;
+    }
+
     if (isCurrent || isThisPlaylistActive) { togglePlay(); return; }
     const isPlaylistKind = (track as any).kind === 'playlist' || (track as any).isSystemPlaylist;
     if (isPlaylistKind) {
@@ -317,7 +325,7 @@ export function TrackCard({ track, queue, index, variant = 'grid' }: Props) {
       return;
     }
     playTrack(track, queue, index);
-  }, [isCurrent, isThisPlaylistActive, track, queue, index, togglePlay, playTrack, playPlaylist, setCurrentPlaylistId]);
+  }, [isCurrent, isThisPlaylistActive, track, queue, index, togglePlay, playTrack, playPlaylist, setCurrentPlaylistId, role, status]);
 
   const handleLike = useCallback((_e: React.MouseEvent) => {
     if (isPlaylist) togglePlaylistLike(track.id, track as any);

@@ -104,6 +104,9 @@ function createWindow() {
     if (!(app as any).__quitting) {
       e.preventDefault();
       mainWindow?.hide();
+    } else {
+      // Уведомляем renderer процесс перед закрытием для очистки Listen Party
+      mainWindow?.webContents.send('app:before-quit');
     }
   });
 

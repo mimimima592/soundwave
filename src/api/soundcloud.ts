@@ -241,6 +241,7 @@ class SoundCloudAPI {
         await res.text();
       }
     } catch (err) {
+      console.error('[SoundCloud] Тестовый запрос ошибка:', err);
     }
   }
 
@@ -309,7 +310,7 @@ class SoundCloudAPI {
 
   /**
    * Батчевый запрос треков. SoundCloud принимает не больше ~50 id за раз,
-   * поэтому разбиваем на чанки и запрашиваем параллельно.
+   * поэтому разбиваем на чанки и запрашиваем параллельно с задержкой для rate limiting.
    */
   async getTracks(ids: number[]): Promise<SCTrack[]> {
     if (ids.length === 0) return [];
@@ -322,10 +323,16 @@ class SoundCloudAPI {
       chunks.push(ids.slice(i, i + CHUNK));
     }
     const results = await Promise.all(
-      chunks.map((chunk) =>
-        this.request<SCTrack[]>('/tracks', { ids: chunk.join(',') }).catch((err) => {
-          console.error('[SoundCloud] Ошибка батчевой загрузки чанка треков:', err);
-          return [] as SCTrack[];
+      chunks.map((chunk, index) =>
+        new Promise<SCTrack[]>((resolve) => {
+          setTimeout(() => {
+            this.request<SCTrack[]>('/tracks', { ids: chunk.join(',') })
+              .then(resolve)
+              .catch((err) => {
+                console.error('[SoundCloud] Ошибка батчевой загрузки чанка треков:', err);
+                resolve([]);
+              });
+          }, index * 200); // 200ms задержка между чанками для rate limiting
         })
       )
     );

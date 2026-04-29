@@ -3,6 +3,7 @@ import { Play, Pause, Heart, Clock, User, Music2 } from 'lucide-react';
 import { cn, formatTime, formatCount, hiResArtwork } from '@/utils/format';
 import type { SCTrack, SCUser } from '@/types/soundcloud';
 import { useUIStore } from '@/store/ui';
+import { useListenPartyStore } from '@/store/listenParty';
 import { scAPI } from '@/api/soundcloud';
 
 export function Spinner({ size = 24, className }: { size?: number; className?: string }) {
@@ -111,6 +112,16 @@ export function TrackRow({
   const [isHovered, setIsHovered] = useState(false);
   const [prefetchedUrl, setPrefetchedUrl] = useState<string | null>(null);
 
+  const { role, status } = useListenPartyStore();
+
+  const handlePlay = () => {
+    // Блокируем запуск треков для слушателей в Listen Party
+    if (role === 'listener' && status === 'connected') {
+      return;
+    }
+    onPlay();
+  };
+
   // OnHover preload stream URL
   useEffect(() => {
     if (isHovered && !prefetchedUrl && track.media?.transcodings) {
@@ -135,7 +146,7 @@ export function TrackRow({
         <div className="w-6 flex-shrink-0 flex items-center justify-center">
           <span className={cn('text-[11px] tabular-nums text-text-dim group-hover:hidden', isCurrent && 'hidden')}>{(index ?? 0) + 1}</span>
           <button
-            onClick={(e) => { e.stopPropagation(); onPlay(); }}
+            onClick={(e) => { e.stopPropagation(); handlePlay(); }}
             className={cn('hidden group-hover:flex items-center justify-center text-text-dim hover:text-accent transition-colors', isCurrent && '!flex text-accent')}
           >
             {showPlaying ? <Pause size={13} className="fill-current" /> : <Play size={13} className="fill-current" />}
@@ -143,7 +154,7 @@ export function TrackRow({
         </div>
       ) : (
         <button
-          onClick={(e) => { e.stopPropagation(); onPlay(); }}
+          onClick={(e) => { e.stopPropagation(); handlePlay(); }}
           className={cn(
             'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:scale-105 active:scale-95',
             isCurrent
