@@ -80,7 +80,8 @@
     "publish": {
       "provider": "github",
       "owner": "mimimima592",
-      "repo": "soundwave"
+      "repo": "soundwave",
+      "releaseType": "release"
     }
   }
 }

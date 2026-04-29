@@ -159,12 +159,23 @@ app.on('ready', async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoUpdater } = require('electron-updater');
+      autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: 'mimimima592',
+        repo: 'soundwave'
+      });
+      console.log('[AutoUpdater] Checking for updates...');
       autoUpdater.checkForUpdatesAndNotify();
       autoUpdater.on('update-available', (info: any) => {
+        console.log('[AutoUpdater] Update available:', info.version);
         mainWindow?.webContents.send('updater:update-available', info.version);
       });
       autoUpdater.on('update-downloaded', (info: any) => {
+        console.log('[AutoUpdater] Update downloaded:', info.version);
         mainWindow?.webContents.send('updater:update-downloaded', info.version);
+      });
+      autoUpdater.on('update-not-available', (info: any) => {
+        console.log('[AutoUpdater] No updates available, current version:', info.version);
       });
       autoUpdater.on('error', (err: any) => {
         console.error('[AutoUpdater] error:', err.message);
