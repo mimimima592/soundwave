@@ -200,6 +200,14 @@ app.on('ready', async () => {
       const { autoUpdater } = require('electron-updater');
       console.log('[AutoUpdater] Manual check triggered');
       const result = await autoUpdater.checkForUpdates();
+      console.log('[AutoUpdater] Check result:', result);
+
+      // Если есть обновление, скачиваем его
+      if (result?.updateInfo?.version) {
+        console.log('[AutoUpdater] Update available, downloading...');
+        await autoUpdater.downloadUpdate();
+      }
+
       return result;
     } catch (err) {
       console.error('[AutoUpdater] Manual check error:', err);
