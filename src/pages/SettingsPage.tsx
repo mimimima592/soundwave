@@ -101,8 +101,11 @@ export function SettingsPage() {
     setUpdateCheckResult(null);
     try {
       const result = await window.electron?.updater?.checkForUpdates();
-      if (result?.updateInfo) {
-        setUpdateCheckResult(`Доступно обновление ${result.updateInfo.version}`);
+      const remoteVersion = result?.updateInfo?.version;
+      const currentVersion = result?.currentVersion;
+      // electron-updater возвращает updateInfo даже если версия та же — сравниваем явно
+      if (remoteVersion && currentVersion && remoteVersion !== currentVersion) {
+        setUpdateCheckResult(`Загружается обновление ${remoteVersion}…`);
       } else {
         setUpdateCheckResult('Обновлений нет');
       }
@@ -258,7 +261,7 @@ export function SettingsPage() {
 
       <SectionTitle>OBS Widget</SectionTitle>
       <SettingsCard>
-        <ToggleRow label="Включить виджет Now Playing" description="Запускает HTTP сервер с виджетом для OBS Browser Source" checked={obsWidgetEnabled} onChange={setObsWidgetEnabled} />
+        <ToggleRow label="Включить виджет Now Playing" description="Запускает HTTP сервер с виджетом для OBS Browser Source" checked={obsWidgetEnabled} onChange={setObsWidgetEnabled} icon={<Tv2 size={15} />} />
         {obsWidgetEnabled && (<>
           <Divider />
           <button onClick={() => setWidgetSettingsOpen(v => !v)} className="flex items-center justify-between w-full py-1 text-[11px] font-semibold uppercase tracking-[0.1em] transition-colors hover:text-text" style={{ color: 'rgb(var(--theme-text-dim)/0.7)' }}>
@@ -311,7 +314,7 @@ export function SettingsPage() {
 
       <SectionTitle>Discord Rich Presence</SectionTitle>
       <SettingsCard>
-        <ToggleRow label="Показывать текущий трек в Discord" description="Твои друзья увидят, что ты слушаешь, прямо в профиле Discord" checked={discordRpcEnabled} onChange={setDiscordRpcEnabled} />
+        <ToggleRow label="Показывать текущий трек в Discord" description="Твои друзья увидят, что ты слушаешь, прямо в профиле Discord" checked={discordRpcEnabled} onChange={setDiscordRpcEnabled} icon={<Disc3 size={15} />} />
       </SettingsCard>
 
       <SectionTitle>Производительность</SectionTitle>
@@ -330,12 +333,19 @@ export function SettingsPage() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-8 h-8 rounded-xl flex-shrink-0 flex items-center justify-center mt-0.5"
-              style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))' }}>
-              <RefreshCw size={15} />
+              style={{
+                background: isCheckingUpdates ? 'rgb(var(--theme-accent) / 0.15)' : 'rgb(var(--theme-surface-alt))',
+                color: isCheckingUpdates ? 'rgb(var(--theme-accent))' : 'rgb(var(--theme-text-dim))'
+              }}>
+              <RefreshCw size={15} className={isCheckingUpdates ? 'animate-spin' : ''} />
             </div>
             <div>
               <div className="text-[13.5px] font-medium">Проверить обновления</div>
-              <div className="text-[12px] mt-0.5" style={{ color: 'rgb(var(--theme-text-dim))' }}>
+              <div className="text-[12px] mt-0.5" style={{
+                color: updateCheckResult?.startsWith('Загружается') ? 'rgb(var(--theme-accent))'
+                  : updateCheckResult?.startsWith('Ошибка') ? '#f87171'
+                  : 'rgb(var(--theme-text-dim))'
+              }}>
                 {updateCheckResult || 'Проверить наличие новой версии'}
               </div>
             </div>
@@ -343,15 +353,14 @@ export function SettingsPage() {
           <button
             onClick={handleCheckUpdates}
             disabled={isCheckingUpdates}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 flex-shrink-0"
             style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))' }}
           >
-            <RefreshCw size={16} className={isCheckingUpdates ? 'animate-spin' : ''} />
+            <RefreshCw size={13} className={isCheckingUpdates ? 'animate-spin' : ''} />
+            {isCheckingUpdates ? 'Проверка…' : 'Проверить'}
           </button>
         </div>
       </SettingsCard>
-
-
       {editingTheme && <ThemeEditor initial={editingTheme} isNew={editorMode === 'new'} onClose={() => setEditingTheme(null)} />}
     </div>
   );
