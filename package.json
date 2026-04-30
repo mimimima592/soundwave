@@ -1,6 +1,6 @@
 {
   "name": "soundwave",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Modern SoundCloud desktop client with custom themes and Discord RPC",
   "main": "dist-electron/main.js",
   "author": "you",
@@ -60,8 +60,7 @@
       ],
       "sign": null,
       "signAndEditExecutable": false,
-      "icon": "build/icon.ico",
-      "publisherName": "Soundwave"
+      "icon": "build/icon.ico"
     },
     "mac": {
       "target": [

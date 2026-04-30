@@ -167,8 +167,23 @@ app.on('ready', async () => {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoUpdater } = require('electron-updater');
 
+      // Включаем подробное логирование в файл — критично для отладки
+      // Лог пишется в %APPDATA%/Soundwave/logs/main.log на Windows
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const log = require('electron-log');
+        log.transports.file.level = 'debug';
+        autoUpdater.logger = log;
+        console.log('[AutoUpdater] Logging to:', log.transports.file.getFile().path);
+      } catch {
+        console.warn('[AutoUpdater] electron-log not installed — logs only in console.');
+      }
+
       // Отключаем автоскачивание — качаем только явно, чтобы не было двойного download
       autoUpdater.autoDownload = false;
+      // Билд без code signing — отключаем проверку подписи, иначе update-downloaded никогда не стреляет
+      autoUpdater.verifyUpdateCodeSignature = false;
+      autoUpdater.allowDowngrade = false;
 
       autoUpdater.setFeedURL({
         provider: 'github',
@@ -180,8 +195,11 @@ app.on('ready', async () => {
       let isDownloading = false;
 
       // Слушатели навешиваем один раз при старте
+      autoUpdater.on('checking-for-update', () => {
+        console.log('[AutoUpdater] Checking for update...');
+      });
       autoUpdater.on('update-available', (info: any) => {
-        console.log('[AutoUpdater] Update available:', info.version);
+        console.log('[AutoUpdater] Update available:', JSON.stringify(info));
         mainWindow?.webContents.send('updater:update-available', info.version);
         if (isDownloading) {
           console.log('[AutoUpdater] Already downloading, skipping duplicate download.');
@@ -189,26 +207,42 @@ app.on('ready', async () => {
         }
         // Начинаем скачивать сразу как нашли обновление
         isDownloading = true;
-        autoUpdater.downloadUpdate().catch((err: any) => {
-          console.error('[AutoUpdater] Download error:', err.message);
-          isDownloading = false;
-        });
+        console.log('[AutoUpdater] Starting downloadUpdate()...');
+        autoUpdater.downloadUpdate()
+          .then((paths: string[]) => {
+            console.log('[AutoUpdater] downloadUpdate() resolved with paths:', paths);
+          })
+          .catch((err: any) => {
+            console.error('[AutoUpdater] Download error:', err?.message || err);
+            console.error('[AutoUpdater] Error stack:', err?.stack);
+            isDownloading = false;
+            mainWindow?.webContents.send('updater:download-error', err?.message || String(err));
+          });
+      });
+      autoUpdater.on('download-progress', (progress: any) => {
+        const pct = Math.round(progress?.percent || 0);
+        console.log(`[AutoUpdater] Download progress: ${pct}% — ${Math.round((progress?.transferred || 0) / 1024)}KB / ${Math.round((progress?.total || 0) / 1024)}KB @ ${Math.round((progress?.bytesPerSecond || 0) / 1024)}KB/s`);
+        mainWindow?.webContents.send('updater:download-progress', pct);
       });
       autoUpdater.on('update-downloaded', (info: any) => {
-        console.log('[AutoUpdater] Update downloaded:', info.version);
+        console.log('[AutoUpdater] Update downloaded:', JSON.stringify(info));
         isDownloading = false;
         mainWindow?.webContents.send('updater:update-downloaded', info.version);
       });
       autoUpdater.on('update-not-available', (info: any) => {
-        console.log('[AutoUpdater] No updates available, current version:', info.version);
+        console.log('[AutoUpdater] No updates available, current version:', info?.version);
       });
       autoUpdater.on('error', (err: any) => {
-        console.error('[AutoUpdater] error:', err.message);
+        console.error('[AutoUpdater] error event:', err?.message || err);
+        console.error('[AutoUpdater] error stack:', err?.stack);
         isDownloading = false;
+        mainWindow?.webContents.send('updater:download-error', err?.message || String(err));
       });
 
-      console.log('[AutoUpdater] Checking for updates...');
-      autoUpdater.checkForUpdates();
+      console.log('[AutoUpdater] Initial check for updates, current version:', app.getVersion());
+      autoUpdater.checkForUpdates().catch((err: any) => {
+        console.error('[AutoUpdater] Initial check failed:', err?.message || err);
+      });
 
       // Периодическая проверка каждые 30 минут
       setInterval(() => {
@@ -220,8 +254,8 @@ app.on('ready', async () => {
         autoUpdater.checkForUpdates();
       }, 30 * 60 * 1000);
 
-    } catch {
-      console.warn('[AutoUpdater] electron-updater not installed, skipping.');
+    } catch (err) {
+      console.warn('[AutoUpdater] electron-updater not installed, skipping.', err);
     }
   }
 
@@ -240,7 +274,8 @@ app.on('ready', async () => {
       // checkForUpdates() запустит событие update-available, которое само запустит downloadUpdate()
       const result = await autoUpdater.checkForUpdates();
       console.log('[AutoUpdater] Check result:', result);
-      return result;
+      // Возвращаем текущую версию чтобы фронтенд мог сравнить и не показывать ложное «доступно обновление»
+      return result ? { ...result, currentVersion: app.getVersion() } : null;
     } catch (err) {
       console.error('[AutoUpdater] Manual check error:', err);
       return null;
