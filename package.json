@@ -1,6 +1,6 @@
 {
   "name": "soundwave",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "description": "Modern SoundCloud desktop client with custom themes and Discord RPC",
   "main": "dist-electron/main.js",
   "author": "you",
@@ -60,9 +60,8 @@
         "nsis"
       ],
       "sign": null,
-      "signAndEditExecutable": true,
-      "icon": "build/icon.ico",
-      "publisherName": "Soundwave"
+      "signAndEditExecutable": false,
+      "icon": "build/icon.ico"
     },
     "mac": {
       "target": [
@@ -83,6 +82,11 @@
       "owner": "mimimima592",
       "repo": "soundwave",
       "releaseType": "release"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
     }
   }
 }
