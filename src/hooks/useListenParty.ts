@@ -202,9 +202,6 @@ export function useListenParty() {
           { urls: 'stun:stun2.l.google.com:19302' },
           { urls: 'stun:stun3.l.google.com:19302' },
           { urls: 'stun:stun4.l.google.com:19302' },
-          // Бесплатный TURN сервер от Twilio (требует регистрации)
-          // Для production лучше использовать свой TURN сервер
-          { urls: 'turn:global.turn.twilio.com:3478?transport=tcp', username: '', credential: '' },
         ],
       },
     });
@@ -258,9 +255,6 @@ export function useListenParty() {
           { urls: 'stun:stun2.l.google.com:19302' },
           { urls: 'stun:stun3.l.google.com:19302' },
           { urls: 'stun:stun4.l.google.com:19302' },
-          // Бесплатный TURN сервер от Twilio (требует регистрации)
-          // Для production лучше использовать свой TURN сервер
-          { urls: 'turn:global.turn.twilio.com:3478?transport=tcp', username: '', credential: '' },
         ],
       },
     });
