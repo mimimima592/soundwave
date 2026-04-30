@@ -1,6 +1,6 @@
 {
   "name": "soundwave",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Modern SoundCloud desktop client with custom themes and Discord RPC",
   "main": "dist-electron/main.js",
   "author": "you",
