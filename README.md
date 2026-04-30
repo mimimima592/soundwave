@@ -103,20 +103,6 @@ npm run build:linux   # Linux (AppImage + .deb)
 
 ---
 
-## Discord Rich Presence
-
-RPC требует собственного Discord Application ID:
-
-1. Создай приложение на [discord.com/developers](https://discord.com/developers/applications)
-2. Скопируй **Application ID**
-3. В `electron/discord-rpc.ts` замени:
-   ```ts
-   const DISCORD_CLIENT_ID = 'ТВОЙ_ID';
-   ```
-4. В **Rich Presence → Art Assets** загрузи три картинки с ключами: `logo`, `play`, `pause`
-
----
-
 ## Горячие клавиши
 
 | Действие | Клавиши |
