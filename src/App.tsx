@@ -51,8 +51,12 @@ function AppContent() {
   }, [location.pathname, mainEl]);
 
   useEffect(() => {
-    window.electron?.updater?.onUpdateAvailable((v) => setUpdateAvailable(v));
-    window.electron?.updater?.onUpdateDownloaded((v) => { setUpdateDownloaded(v); setUpdateAvailable(null); });
+    const unsubAvailable = window.electron?.updater?.onUpdateAvailable((v) => setUpdateAvailable(v));
+    const unsubDownloaded = window.electron?.updater?.onUpdateDownloaded((v) => { setUpdateDownloaded(v); setUpdateAvailable(null); });
+    return () => {
+      unsubAvailable?.();
+      unsubDownloaded?.();
+    };
   }, []);
 
   // ── Window visibility — снижаем нагрузку только когда вкладка скрыта ──

@@ -22,6 +22,11 @@ import {
 
 const isDev = process.env.NODE_ENV === 'development';
 
+// Фиксирует иконку в таскбаре Windows — без этого показывается иконка electron.exe
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.soundwave.app');
+}
+
 // Отключаем детекцию webdriver
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 
@@ -53,12 +58,14 @@ async function detectClashPort(): Promise<number> {
 }
 
 function createWindow() {
+  const appIcon = nativeImage.createFromPath(path.join(app.getAppPath(), 'build', 'icon.ico'));
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 600,
-    icon: path.join(__dirname, '../build/icon.ico'),
+    icon: appIcon.isEmpty() ? path.join(__dirname, '../build/icon.ico') : appIcon,
     // Frameless окно для кастомного оформления
     frame: false,
     titleBarStyle: 'hidden',

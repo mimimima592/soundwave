@@ -46,12 +46,13 @@ export function Titlebar() {
               boxShadow: '0 2px 10px rgb(var(--theme-accent) / 0.4)',
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <svg width="14" height="14" viewBox="0 0 256 256" fill="none">
               <path
-                d="M3 12c0-1 .2-2 .5-3M7 8v12M11 4v18M15 7v14M19 10v8M22 12c0 1-.2 2-.5 3"
+                d="M 28 128 Q 70 28 112 128 Q 154 228 196 128 Q 218 78 238 128"
                 stroke="white"
-                strokeWidth="2.2"
+                strokeWidth="52"
                 strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </svg>
           </div>
