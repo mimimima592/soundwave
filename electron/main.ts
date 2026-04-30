@@ -77,7 +77,14 @@ function createWindow() {
     mainWindow?.show();
   });
 
-
+  // Горячая клавиша для DevTools (Ctrl+Shift+I или F12)
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
+      if (!mainWindow?.webContents.isDevToolsOpened()) {
+        mainWindow?.webContents.openDevTools({ mode: 'detach' });
+      }
+    }
+  });
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
@@ -159,26 +166,37 @@ app.on('ready', async () => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoUpdater } = require('electron-updater');
+
+      // Отключаем автоскачивание — качаем только явно, чтобы не было двойного download
+      autoUpdater.autoDownload = false;
+
       autoUpdater.setFeedURL({
         provider: 'github',
         owner: 'mimimima592',
         repo: 'soundwave'
       });
-      console.log('[AutoUpdater] Checking for updates...');
-      autoUpdater.checkForUpdatesAndNotify();
 
-      // Периодическая проверка каждые 30 минут
-      setInterval(() => {
-        console.log('[AutoUpdater] Periodic check...');
-        autoUpdater.checkForUpdates();
-      }, 30 * 60 * 1000);
+      // Флаг предотвращает запуск параллельных скачиваний (периодические проверки)
+      let isDownloading = false;
 
+      // Слушатели навешиваем один раз при старте
       autoUpdater.on('update-available', (info: any) => {
         console.log('[AutoUpdater] Update available:', info.version);
         mainWindow?.webContents.send('updater:update-available', info.version);
+        if (isDownloading) {
+          console.log('[AutoUpdater] Already downloading, skipping duplicate download.');
+          return;
+        }
+        // Начинаем скачивать сразу как нашли обновление
+        isDownloading = true;
+        autoUpdater.downloadUpdate().catch((err: any) => {
+          console.error('[AutoUpdater] Download error:', err.message);
+          isDownloading = false;
+        });
       });
       autoUpdater.on('update-downloaded', (info: any) => {
         console.log('[AutoUpdater] Update downloaded:', info.version);
+        isDownloading = false;
         mainWindow?.webContents.send('updater:update-downloaded', info.version);
       });
       autoUpdater.on('update-not-available', (info: any) => {
@@ -186,28 +204,42 @@ app.on('ready', async () => {
       });
       autoUpdater.on('error', (err: any) => {
         console.error('[AutoUpdater] error:', err.message);
+        isDownloading = false;
       });
+
+      console.log('[AutoUpdater] Checking for updates...');
+      autoUpdater.checkForUpdates();
+
+      // Периодическая проверка каждые 30 минут
+      setInterval(() => {
+        if (isDownloading) {
+          console.log('[AutoUpdater] Periodic check skipped — download in progress.');
+          return;
+        }
+        console.log('[AutoUpdater] Periodic check...');
+        autoUpdater.checkForUpdates();
+      }, 30 * 60 * 1000);
+
     } catch {
       console.warn('[AutoUpdater] electron-updater not installed, skipping.');
     }
   }
 
-  // IPC handler для ручной проверки обновлений
+  // IPC handler для ручной проверки обновлений (кнопка в настройках)
   ipcMain.removeHandler('updater:checkForUpdates');
   ipcMain.handle('updater:checkForUpdates', async () => {
+    if (isDev) {
+      console.log('[AutoUpdater] Manual check skipped in dev mode.');
+      return null;
+    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { autoUpdater } = require('electron-updater');
+      autoUpdater.autoDownload = false;
       console.log('[AutoUpdater] Manual check triggered');
+      // checkForUpdates() запустит событие update-available, которое само запустит downloadUpdate()
       const result = await autoUpdater.checkForUpdates();
       console.log('[AutoUpdater] Check result:', result);
-
-      // Если есть обновление, скачиваем его
-      if (result?.updateInfo?.version) {
-        console.log('[AutoUpdater] Update available, downloading...');
-        await autoUpdater.downloadUpdate();
-      }
-
       return result;
     } catch (err) {
       console.error('[AutoUpdater] Manual check error:', err);
@@ -340,16 +372,6 @@ app.on('quit', () => {
 
 // Управление окном (для custom titlebar)
 ipcMain.on('log', (_e, ...args) => console.log('[Renderer]', ...args));
-
-ipcMain.handle('updater:install', () => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { autoUpdater } = require('electron-updater');
-    autoUpdater.quitAndInstall();
-  } catch {
-    console.warn('[AutoUpdater] electron-updater not installed.');
-  }
-});
 
 ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('window:maximize', () => {
