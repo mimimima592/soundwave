@@ -208,11 +208,17 @@ export function useListenParty() {
     store.setPeerInstance(peer);
 
     peer.on('open', (id: string) => {
+      console.log('[ListenParty][HOST] peer.open, id:', id);
       store.setPeerId(id);
       store.setSessionCode(id);
       store.setStatus('hosting');
       store.setConnectedSince(Date.now());
       startHeartbeat();
+    });
+
+    peer.on('disconnected', () => {
+      console.warn('[ListenParty][HOST] peer.disconnected — пытаемся переподключиться');
+      try { peer.reconnect(); } catch (e) { console.error('[ListenParty][HOST] reconnect failed:', e); }
     });
 
     peer.on('connection', (conn: any) => {
@@ -260,19 +266,21 @@ export function useListenParty() {
     });
     store.setPeerInstance(peer);
 
-    peer.on('open', () => {
+    peer.on('open', (myId: string) => {
+      console.log('[ListenParty][JOIN] peer.open, my id:', myId, '— подключаюсь к', code.trim());
       const conn = peer.connect(code.trim(), { reliable: true });
 
       // Таймаут на подключение (60 секунд)
       const connectionTimeout = setTimeout(() => {
         if (useListenPartyStore.getState().status !== 'connected') {
-          console.error('[ListenParty] Таймаут подключения к лидеру');
+          console.error('[ListenParty][JOIN] Таймаут подключения к лидеру (60с)');
           conn.close();
           store.setStatus('disconnected');
         }
       }, 60000);
 
       conn.on('open', () => {
+        console.log('[ListenParty][JOIN] conn.open — соединение установлено');
         clearTimeout(connectionTimeout);
         store.setSessionCode(code.trim());
         store.setConnectionInstance(conn);
