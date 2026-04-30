@@ -1,40 +1,85 @@
 # Soundwave
 
-Современный десктопный клиент SoundCloud с кастомными темами, анимированными фонами и интеграцией Discord Rich Presence.
+> Неофициальный десктопный клиент SoundCloud с кастомными темами, эквалайзером, синхронным прослушиванием и интеграцией с Discord и OBS.
 
-**Стек:** Electron · React 18 · TypeScript · Tailwind · Zustand · Vite
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
+![Stack](https://img.shields.io/badge/stack-Electron%20%B7%20React%20%B7%20TypeScript-informational)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
 ## Возможности
 
-- **Нативный плеер** — полностью свой UI поверх SoundCloud API (не WebView)
-- **5 встроенных тем** (Midnight, Lavender, Synthwave, Forest, Paper) + редактор кастомных тем с color-picker для каждого цвета
-- **Фоны:** GIF по URL, артворк текущего трека, сплошной цвет/градиент, с регулировкой blur и прозрачности
-- **Discord Rich Presence** с прогресс-баром, обложкой трека и кнопкой "Listen on SoundCloud"
-- **Чарты и тренды** по жанрам
-- **Поиск** с debounce
-- **Очередь** с shuffle/repeat
-- **Горячие клавиши** и поддержка медиа-клавиш
-- **Frameless окно** с кастомным titlebar
-- **Персистентность** — настройки, тема, токен сохраняются между запусками
+### Плеер
+- Полностью кастомный UI поверх SoundCloud API — никакого WebView
+- Очередь со shuffle и тремя режимами повтора
+- Перемотка, регулировка громкости, медиа-клавиши
+- История прослушивания
+- Вставка ссылки на трек/плейлист прямо в приложение
+
+### Темы и кастомизация
+- 5 встроенных тем: Midnight, Lavender, Synthwave, Forest, Paper
+- Редактор тем с color-picker по 8 токенам (фон, поверхность, акцент, текст и др.)
+- Фон окна: GIF по URL, артворк текущего трека, сплошной цвет или CSS-градиент
+- Регулировка blur и прозрачности фона
+
+### Эквалайзер
+- 7-полосный параметрический эквалайзер через Web Audio API
+- Встроенные пресеты: Flat, Bass Boost, Treble, Rock
+
+### Текст песни
+- Синхронизированные тексты с подсветкой текущей строки (LRC)
+- Фолбэк на обычный текст если синхронизации нет
+
+### Listen Party
+- Совместное прослушивание через PeerJS (WebRTC, peer-to-peer)
+- Хост управляет треком и очередью, слушатели синхронизируются в реальном времени
+- Heartbeat для контроля соединения
+
+### Discord Rich Presence
+- Отображает трек, артиста, прогресс и обложку прямо в профиле Discord
+- Кнопка «Listen on SoundCloud» для друзей
+- Автопереподключение если Discord был закрыт
+
+### OBS Widget
+- HTTP-сервер на порту `9988` с виджетом Now Playing для OBS Browser Source
+- Кастомный акцент-цвет, blur фона, прозрачность оверлея
+- Синхронизируется с плеером в реальном времени
+
+### Автообновление
+- Обновления через GitHub Releases — проверяет при старте и каждые 30 минут
+- Ручная проверка в настройках
+- Silent install без участия пользователя
 
 ---
 
-## Быстрый старт
+## Установка
+
+Скачай последний установщик со страницы [Releases](../../releases/latest):
+
+| Платформа | Файл |
+|-----------|------|
+| Windows   | `Soundwave-Setup-x.x.x.exe` |
+| macOS     | `Soundwave-x.x.x.dmg` |
+| Linux     | `Soundwave-x.x.x.AppImage` или `.deb` |
+
+---
+
+## Сборка из исходников
 
 ```bash
+git clone https://github.com/mimimima592/soundwave.git
+cd soundwave
 npm install
 npm run dev
 ```
 
-Это запустит Vite dev-сервер и Electron одновременно. При первом запуске приложение само извлечёт `client_id` из публичной веб-версии SoundCloud — авторизация не нужна, чтобы играть треки и видеть чарты.
+При первом запуске `client_id` для SoundCloud API извлекается автоматически — авторизация не нужна для воспроизведения треков и просмотра чартов.
 
 ### Сборка дистрибутива
 
 ```bash
-npm run build         # под текущую платформу
-npm run build:win     # Windows (.exe, NSIS-инсталлер)
+npm run build:win     # Windows (.exe, NSIS)
 npm run build:mac     # macOS (.dmg)
 npm run build:linux   # Linux (AppImage + .deb)
 ```
@@ -43,139 +88,49 @@ npm run build:linux   # Linux (AppImage + .deb)
 
 ---
 
-## Настройка Discord Rich Presence
+## Авторизация SoundCloud
 
-RPC не заработает "из коробки" — ему нужен собственный Application ID в Discord. Это разовая настройка на 2 минуты:
+Базовое воспроизведение и поиск работают без авторизации. Авторизация нужна для: ленты подписок, плейлистов, лайков, подписчиков.
 
-1. Зайди на https://discord.com/developers/applications и нажми **New Application**. Назови его как хочешь (имя покажется в Discord как "Играет в [NAME]")
-2. Скопируй **Application ID** со страницы **General Information**
-3. Открой `electron/discord-rpc.ts` и замени значение константы:
-   ```ts
-   const DISCORD_CLIENT_ID = 'ТВОЙ_APPLICATION_ID';
-   ```
-4. Вернись на сайт Discord, перейди в **Rich Presence → Art Assets** и загрузи три изображения с именами (ключами):
-   - `logo` — большая иконка в правой части presence (рекомендую 512×512, логотип Soundwave или твой)
-   - `play` — маленькая иконка статуса "играет" (треугольник)
-   - `pause` — маленькая иконка статуса "на паузе"
-5. Перезапусти приложение. Discord должен быть запущен.
+Официальная регистрация сторонних приложений в SoundCloud закрыта с 2021 года. Способ получить токен — извлечь свой из веб-версии:
 
-> Если Discord выключен, Soundwave просто молча пропустит обновления RPC и переподключится, когда Discord запустится.
+1. Залогинься на [soundcloud.com](https://soundcloud.com) в браузере
+2. Открой DevTools (`F12`) → **Application → Cookies → soundcloud.com**
+3. Найди cookie `oauth_token`, скопируй значение
+4. В Soundwave: **Настройки → Авторизация SoundCloud** → вставь токен
+
+Либо нажми **Авторизоваться через SoundCloud** — откроется браузер и токен подхватится автоматически.
 
 ---
 
-## Авторизация SoundCloud (опционально)
+## Горячие клавиши
 
-Базовое воспроизведение и поиск работают без авторизации. Авторизация нужна только для: ленты подписок, своих плейлистов, лайков.
+| Действие | Клавиши |
+|----------|---------|
+| Play / Pause | `Space` |
+| Следующий / предыдущий трек | `Shift + →/←` |
+| Перемотка ±10 сек | `Ctrl + →/←` |
+| Громкость ±5% | `Ctrl + ↑/↓` |
+| Mute | `Ctrl + M` |
 
-Официальная регистрация сторонних приложений в SoundCloud **закрыта с 2021 года**. Единственный рабочий способ получить OAuth-токен — извлечь свой же токен из веб-версии:
-
-1. Открой https://soundcloud.com в браузере и залогинься
-2. Открой DevTools (`F12`) → вкладка **Application** (Chrome) или **Storage** (Firefox)
-3. Слева раскрой **Cookies → https://soundcloud.com**
-4. Найди cookie с именем `oauth_token` и скопируй его значение
-5. В Soundwave открой **Настройки → Авторизация SoundCloud**, вставь токен, нажми **Войти**
-
-Токен шифруется и сохраняется локально через electron-store. Он действует пока ты не вышел из аккаунта в браузере.
+Медиа-клавиши на клавиатуре (Play/Pause/Next/Prev) тоже работают.
 
 ---
 
-## Клавиатурные шорткаты
+## Стек
 
-| Действие              | Клавиши              |
-| --------------------- | -------------------- |
-| Play / Pause          | `Space`              |
-| Следующий / предыдущий | `Shift + ←/→`      |
-| Перемотка ±10 сек     | `Ctrl/Cmd + ←/→`    |
-| Громкость ±5%         | `Ctrl/Cmd + ↑/↓`    |
-| Mute                  | `Ctrl/Cmd + M`       |
-
-Медиа-клавиши (Play/Pause/Next/Previous на клавиатуре) тоже работают.
-
----
-
-## Структура проекта
-
-```
-soundwave/
-├── electron/              # Main process
-│   ├── main.ts           # Electron entry, IPC handlers
-│   ├── preload.ts        # Bridge main↔renderer
-│   ├── discord-rpc.ts    # Discord RPC manager
-│   └── settings-store.ts # electron-store wrapper
-├── src/                   # Renderer (React)
-│   ├── api/
-│   │   └── soundcloud.ts # SoundCloud API клиент + auto-client_id
-│   ├── components/
-│   │   ├── common/       # Titlebar, BackgroundLayer, UI primitives
-│   │   ├── player/       # PlayerBar, TrackCard
-│   │   ├── sidebar/      # Sidebar
-│   │   └── settings/     # ThemeEditor
-│   ├── pages/            # HomePage, SearchPage, SettingsPage, ...
-│   ├── store/            # Zustand stores (player, ui)
-│   ├── themes/           # Built-in themes + applyTheme
-│   ├── hooks/            # useAudio, useDiscordRPC, useKeyboard
-│   ├── types/            # SoundCloud API типы + window.electron
-│   └── utils/            # format helpers
-└── ...configs
-```
+| Слой | Технологии |
+|------|-----------|
+| Оболочка | Electron 30 |
+| UI | React 18, TypeScript, Tailwind CSS |
+| Состояние | Zustand |
+| Сборка | Vite, electron-builder |
+| P2P | PeerJS (WebRTC) |
+| Audio | Web Audio API |
+| Хранилище | electron-store |
 
 ---
 
-## Как создать свою тему
+## Дисклеймер
 
-1. **Настройки → Темы → Новая** — создаст копию активной темы
-2. Редактируй цвета через color-picker или вбивай вручную
-3. Настрой blur и радиус скругления
-4. **Сохранить** — тема сразу применится
-
-Все 8 цветов управляют разными частями UI:
-- `bg` — основной фон окна
-- `surface` — панели и карточки
-- `surface-alt` — hover-состояния
-- `border` — контуры и разделители
-- `text` / `textDim` — основной и вторичный текст
-- `accent` / `accentHover` — кнопка play, активная вкладка, прогресс-бар
-
-Темы хранятся в `electron-store` (JSON в папке пользователя). Экспорт/импорт тем — хорошая идея для следующей версии.
-
----
-
-## Важные ограничения
-
-### HLS-стримы
-SoundCloud всё чаще отдаёт треки только через HLS (не progressive MP3). Текущая реализация пытается сначала найти progressive-транскодинг. Если его нет и есть только HLS — трек может не проиграться. Решение: добавить `hls.js`:
-
-```bash
-npm install hls.js
-```
-
-И в `src/store/player.ts` в методе `playTrack`, когда `isHls === true`, подключить `Hls` вместо прямого `audio.src = url`. Это небольшая правка на ~15 строк.
-
-### SoundCloud может заблокировать
-Использование извлечённого `client_id` — формально серая зона. Десятки опенсорс-клиентов используют этот подход годами, но SoundCloud в любой момент может добавить anti-scraping. Если в один день приложение перестанет работать — скорее всего сломался `fetchClientId()`; придётся обновить регулярку под новый формат их бандлов.
-
-### Discord Client ID обязателен
-Без своего Discord Application ID RPC просто не активируется (код это проверяет и тихо пропускает). Нельзя использовать чужой ID — иконки в presence берутся из Art Assets того приложения.
-
-### Шифрование настроек
-Для простоты `electron-store` настроен с жёстко прописанным ключом шифрования в `electron/settings-store.ts`. Для production лучше использовать `safeStorage` API Electron (привязан к OS keychain) для хранения OAuth-токена.
-
----
-
-## Что можно улучшить дальше
-
-- Детальные страницы артиста и плейлиста (сейчас только карточки)
-- Impl ленты/библиотеки/лайков (stub-страницы готовы, нужно наполнить API-вызовами)
-- Добавить `hls.js` для полной поддержки HLS
-- Экспорт/импорт тем через JSON-файлы
-- Встроенный OAuth-flow через Electron BrowserWindow (вместо ручного копирования токена)
-- Equalizer через Web Audio API
-- Скроблинг в Last.fm
-
----
-
-## Лицензия
-
-MIT. Используй как хочешь.
-
-**Disclaimer:** Soundwave — неофициальный клиент и никак не связан с SoundCloud Inc. Используется внутренний `api-v2` endpoint, формально не предназначенный для сторонних клиентов. SoundCloud может в любой момент изменить API или заблокировать доступ.
+Soundwave — неофициальный клиент, никак не связанный с SoundCloud Inc. Использует внутренний `api-v2` endpoint, не предназначенный для сторонних приложений. SoundCloud может в любой момент изменить API.
