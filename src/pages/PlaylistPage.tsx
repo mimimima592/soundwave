@@ -10,6 +10,7 @@ import { formatTime, hiResArtwork, formatCount, cn } from '@/utils/format';
 import { Spinner, EmptyState, TrackRow, RowSkeleton, CoverHeaderSkeleton } from '@/components/common/UI';
 import { usePageCacheStore } from '@/store/pageCache';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useT, useI18nStore } from '@/store/i18n';
 
 const PLAYLIST_CACHE_TTL_MS = 10 * 60 * 1000;
 // Запрашиваем сразу все треки плейлиста как stub'ы (id + частичные поля).
@@ -22,6 +23,7 @@ function isFullTrack(track: any): boolean {
 }
 
 export function PlaylistPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -280,13 +282,13 @@ export function PlaylistPage() {
   if (error || !playlist) {
     return (
       <EmptyState
-        title="Не удалось загрузить плейлист"
-        description={error || 'Плейлист не найден'}
+        title={t('playlist_load_error')}
+        description={error || t('playlist_not_found')}
       />
     );
   }
 
-  const createdDate = new Date(playlist.created_at).toLocaleDateString('ru-RU', {
+  const createdDate = new Date(playlist.created_at).toLocaleDateString(useI18nStore.getState().language === 'en' ? 'en-US' : 'ru-RU', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -439,7 +441,7 @@ export function PlaylistPage() {
       {/* Список треков */}
       {isHydrating ? (
         <div>
-          <h2 className="text-2xl font-bold mb-4">Треки</h2>
+          <h2 className="text-2xl font-bold mb-4">{t('playlist_tracks_header')}</h2>
           <div className="space-y-1">
             {Array.from({ length: Math.min(playlist.tracks.length, 10) }, (_, i) => (
               <RowSkeleton key={i} />
@@ -448,7 +450,7 @@ export function PlaylistPage() {
         </div>
       ) : playlist.tracks.length > 0 ? (
         <div>
-          <h2 className="text-2xl font-bold mb-4">Треки</h2>
+          <h2 className="text-2xl font-bold mb-4">{t('playlist_tracks_header')}</h2>
           <div className="space-y-1">
             {playlist.tracks.slice(0, visibleCount).map((track, index) => {
               const isCurrent = currentTrack?.id === track.id;
@@ -472,7 +474,7 @@ export function PlaylistPage() {
           </div>
         </div>
       ) : (
-        <EmptyState title="Плейлист пуст" description="В этом плейлисте пока нет треков" />
+        <EmptyState title={t('playlist_empty')} description={t('playlist_empty_desc')} />
       )}
 
       {/* Toast — portal в document.body чтобы обойти contain:layout на main */}
@@ -485,7 +487,7 @@ export function PlaylistPage() {
           <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <span>Ссылка скопирована</span>
+          <span>{t('playlist_link_copied')}</span>
         </div>,
         document.body
       )}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Clock } from 'lucide-react';
 import { scAPI } from '@/api/soundcloud';
 import type { SCTrack } from '@/types/soundcloud';
@@ -10,7 +10,8 @@ import { formatTime, hiResArtwork, formatCount, cn } from '@/utils/format';
 import { PageHeader, EmptyState, TrackCardSkeleton } from '@/components/common/UI';
 import { TrackCard } from '@/components/player/TrackCard';
 import { useInfiniteGrid } from '@/hooks/useInfiniteGrid';
-import { useGridSidebarAnim } from '@/hooks/useGridSidebarAnim';
+
+import { useT } from '@/store/i18n';
 
 const PAGE_CACHE_TTL_MS = 10 * 60 * 1000;
 const PAGE_SIZE = 50;
@@ -25,6 +26,8 @@ function calcInitialLimit(): number {
 
 export function HistoryPage() {
   const oauthToken = useUIStore((s) => s.oauthToken);
+  const setQueueLoader = usePlayerStore((s) => s.setQueueLoader);
+  const t = useT();
   const localEntries = useHistoryStore((s) => s.entries);
   const [tracks, setTracks] = useState<SCTrack[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,11 +47,7 @@ export function HistoryPage() {
     setLoadingMore(true);
     try {
       const historyData = await scAPI.fetchNext<{ track: SCTrack }>(nextHref);
-
-      const historyTracks = historyData.collection
-        .map((item: any) => item.track)
-        .filter(Boolean);
-
+      const historyTracks = historyData.collection.map((item: any) => item.track).filter(Boolean);
       setTracks((prev) => {
         const existing = new Set(prev.map((t) => t.id));
         return [...prev, ...historyTracks.filter((t: SCTrack) => !existing.has(t.id))];
@@ -68,7 +67,28 @@ export function HistoryPage() {
     items: tracks,
     onLoadMore: loadMoreTracks,
   });
-  const sidebarAnimRef = useGridSidebarAnim();
+
+
+  // Регистрируем queueLoader для бесшовного воспроизведения истории
+  const nextHrefRef = useRef(nextHref);
+  nextHrefRef.current = nextHref;
+  const oauthTokenRef = useRef(oauthToken);
+  oauthTokenRef.current = oauthToken;
+  useEffect(() => {
+    setQueueLoader(async () => {
+      const href = nextHrefRef.current;
+      if (!href || !oauthTokenRef.current) return [];
+      const historyData = await scAPI.fetchNext<{ track: SCTrack }>(href);
+      const newTracks = historyData.collection.map((item: any) => item.track).filter(Boolean) as SCTrack[];
+      setTracks((prev) => {
+        const existing = new Set(prev.map((t) => t.id));
+        return [...prev, ...newTracks.filter((t) => !existing.has(t.id))];
+      });
+      setNextHref(historyData.next_href);
+      return newTracks;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setQueueLoader]);
 
   useEffect(() => {
     const cacheKey = 'page:history';
@@ -145,11 +165,11 @@ export function HistoryPage() {
   if (!oauthToken) {
     return (
       <div>
-        <PageHeader title="История" />
+        <PageHeader title={t('history_auth_title')} />
         <EmptyState
           icon={<Clock size={40} />}
-          title="Требуется авторизация"
-          description="Авторизуйся через Настройки → Авторизация, чтобы видеть историю прослушивания"
+          title={t('auth_required')}
+          description={t('history_auth_desc')}
         />
       </div>
     );
@@ -157,12 +177,12 @@ export function HistoryPage() {
 
   return (
     <div>
-      <PageHeader title="История прослушивания" subtitle="Твои недавно прослушанные треки" />
+      <PageHeader title={t('history_title')} subtitle={t('history_subtitle')} />
 
       {error ? (
         <EmptyState
           icon={<Clock size={40} />}
-          title="Ошибка загрузки"
+          title={t('error_loading')}
           description={error}
         />
       ) : loading ? (
@@ -174,13 +194,13 @@ export function HistoryPage() {
       ) : tracks.length === 0 ? (
         <EmptyState
           icon={<Clock size={40} />}
-          title="История пуста"
-          description="Начни слушать треки, чтобы они появились здесь"
+          title={t('history_empty_title')}
+          description={t('history_empty_desc')}
         />
       ) : (
         <>
           <div
-            ref={(el) => { (gridRef as any).current = el; (sidebarAnimRef as any).current = el; }}
+            ref={gridRef}
             className={`${gridClassName} animate-slide-up`}
           >
             {tracks.map((track, index) => (

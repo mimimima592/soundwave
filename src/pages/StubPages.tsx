@@ -11,7 +11,8 @@ import { PageHeader, EmptyState, TrackCardSkeleton } from '@/components/common/U
 import { TrackCard } from '@/components/player/TrackCard';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { useInfiniteGrid } from '@/hooks/useInfiniteGrid';
-import { useGridSidebarAnim } from '@/hooks/useGridSidebarAnim';
+
+import { useT } from '@/store/i18n';
 
 const PAGE_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -25,12 +26,13 @@ function calcInitialLimit(): number {
 }
 
 function AuthGate({ title, description }: { title: string; description: string }) {
+  const t = useT();
   return (
     <div>
       <PageHeader title={title} />
       <EmptyState
         icon={<Lock size={40} />}
-        title="Требуется авторизация"
+        title={t('auth_required')}
         description={description}
       />
     </div>
@@ -39,6 +41,8 @@ function AuthGate({ title, description }: { title: string; description: string }
 
 export function FeedPage() {
   const oauthToken = useUIStore((s) => s.oauthToken);
+  const setQueueLoader = usePlayerStore((s) => s.setQueueLoader);
+  const t = useT();
   const [tracks, setTracks] = useState<SCTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +93,34 @@ export function FeedPage() {
     items: tracks,
     onLoadMore: loadMoreTracks,
   });
+
+  // Регистрируем loader для подгрузки очереди из player когда трек в конце страницы
+  const nextHrefRef = useRef(nextHref);
+  nextHrefRef.current = nextHref;
+  const oauthTokenRef = useRef(oauthToken);
+  oauthTokenRef.current = oauthToken;
+  const excludeRepostsRef = useRef(excludeReposts);
+  excludeRepostsRef.current = excludeReposts;
+  useEffect(() => {
+    setQueueLoader(async () => {
+      const href = nextHrefRef.current;
+      if (!href || !oauthTokenRef.current) return [];
+      let paginationUrl = href;
+      if (excludeRepostsRef.current && !paginationUrl.includes('activityTypes')) {
+        const separator = paginationUrl.includes('?') ? '&' : '?';
+        paginationUrl += `${separator}activityTypes=TrackPost,PlaylistPost`;
+      }
+      const stream = await scAPI.fetchNext<{ track?: SCTrack; playlist?: SCPlaylist; type?: string }>(paginationUrl);
+      const newTracks = stream.collection.map((item: any) => item.track).filter(Boolean) as SCTrack[];
+      setTracks((prev) => {
+        const existing = new Set(prev.map((t) => t.id));
+        return [...prev, ...newTracks.filter((t) => !existing.has(t.id))];
+      });
+      setNextHref(stream.next_href);
+      return newTracks;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setQueueLoader]);
 
   // Save toggle to localStorage
   useEffect(() => {
@@ -172,8 +204,8 @@ export function FeedPage() {
   if (!oauthToken) {
     return (
       <AuthGate
-        title="Лента"
-        description="Авторизуйся через Настройки → Авторизация, чтобы видеть ленту подписок"
+        title={t('feed_title')}
+        description={t('feed_auth_desc')}
       />
     );
   }
@@ -181,9 +213,9 @@ export function FeedPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <PageHeader title="Лента" subtitle="Свежие треки от тех, на кого ты подписан" />
+        <PageHeader title={t('feed_title')} subtitle={t('feed_subtitle')} />
         <div className="flex items-center gap-3">
-          <span className="text-sm text-text-dim">Скрыть репосты</span>
+          <span className="text-sm text-text-dim">{t('feed_hide_reposts')}</span>
           <button
             onClick={() => handleToggleChange(!excludeReposts)}
             className={`relative w-12 h-6 rounded-full transition-colors duration-300 ${excludeReposts ? 'bg-accent' : 'bg-surface-alt'}`}
@@ -193,7 +225,7 @@ export function FeedPage() {
           </button>
         </div>
       </div>
-      {error && <EmptyState title="Ошибка" description={error} />}
+      {error && <EmptyState title={t('error')} description={error} />}
 
       {!error && (
         loading ? (
@@ -219,12 +251,20 @@ export function FeedPage() {
 export function LibraryPage() {
   const navigate = useNavigate();
   const oauthToken = useUIStore((s) => s.oauthToken);
+  const t = useT();
   const libraryPlaylists = useUIStore((s) => s.libraryPlaylists);
   const syncLikedPlaylists = useUIStore((s) => s.syncLikedPlaylists);
   const [playlists, setPlaylists] = useState<SCPlaylist[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const skeletonItems = Array.from({ length: 28 });
+  const skeletonItems = useMemo(() => {
+    const minCardWidth = 180;
+    const gap = 20;
+    const padding = 32;
+    const cols = Math.max(1, Math.floor((window.innerWidth - padding + gap) / (minCardWidth + gap)));
+    const rows = Math.ceil((window.innerHeight - 200) / (220 + gap)) + 1;
+    return Array.from({ length: cols * rows });
+  }, []);
 
   useEffect(() => {
     const cacheKey = 'page:library';
@@ -365,19 +405,19 @@ export function LibraryPage() {
   if (!oauthToken) {
     return (
       <AuthGate
-        title="Библиотека"
-        description="Авторизуйся в Настройках, чтобы видеть свои плейлисты"
+        title={t('library_auth_title')}
+        description={t('library_auth_desc')}
       />
     );
   }
 
   if (error) {
-    return <EmptyState title="Ошибка загрузки" description={error} />;
+    return <EmptyState title={t('error_loading')} description={error} />;
   }
 
   return (
     <div>
-      <PageHeader title="Библиотека" subtitle="Твои плейлисты и альбомы" />
+      <PageHeader title={t('library_title')} subtitle={t('library_subtitle')} />
 
       <div className={loading ? 'main-grid-layout' : 'main-grid-layout animate-fade-in-only'}>
         {loading
@@ -396,6 +436,8 @@ type ServerLikeItem = { created_at: string; track: SCTrack };
 
 export function LikesPage() {
   const oauthToken = useUIStore((s) => s.oauthToken);
+  const setQueueLoader = usePlayerStore((s) => s.setQueueLoader);
+  const t = useT();
   const likedTrackIds = useUIStore((s) => s.likedTrackIds);
   const optimisticTracks = useUIStore((s) => s.optimisticTracks);
   const addServerLikedIds = useUIStore((s) => s.addServerLikedIds);
@@ -465,9 +507,32 @@ export function LikesPage() {
     items: displayedTracks,
     onLoadMore: loadMore,
   });
-  const likesSidebarAnimRef = useGridSidebarAnim();
 
-  // Track removed tracks for exit animation
+
+  const apiNextHrefRef = useRef(apiNextHref);
+  apiNextHrefRef.current = apiNextHref;
+  const oauthTokenRef = useRef(oauthToken);
+  oauthTokenRef.current = oauthToken;
+  useEffect(() => {
+    setQueueLoader(async () => {
+      const href = apiNextHrefRef.current;
+      if (!href || !oauthTokenRef.current) return [];
+      const res = await scAPI.fetchNext<any>(href);
+      const fresh = parseLikesCollection(res.collection);
+      setServerLikes((prev) => {
+        const existing = new Set(prev.map((i) => i.track.id));
+        return [...prev, ...fresh.filter((i) => !existing.has(i.track.id))];
+      });
+      setApiNextHref(res.next_href);
+      addServerLikedIds(fresh.map((i) => i.track.id));
+      return fresh.map((i) => i.track);
+    });
+    // Не сбрасываем queueLoader при размонтировании — пользователь мог уйти
+    // на другую вкладку пока играют треки из лайков. Loader сбросится сам
+    // когда playTrack запустит новую очередь (index === 0 → queueLoader: null)
+    // или когда страница снова смонтируется и переустановит свой loader.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setQueueLoader, addServerLikedIds]);
   useEffect(() => {
     const currentIds = new Set(displayedTracks.map((t) => t.id));
     // Update data cache for all currently visible tracks
@@ -536,19 +601,19 @@ export function LikesPage() {
 
   return (
     <div>
-      <PageHeader title="Любимое" subtitle="Лайкнутые треки" />
-      {error && <EmptyState title="Ошибка" description={error} />}
+      <PageHeader title={t('likes_title')} subtitle={t('likes_subtitle')} />
+      {error && <EmptyState title={t('error')} description={error} />}
 
       {!loading && !error && displayedTracks.length === 0 && exitItems.size === 0 && (
         <EmptyState
           icon={<Heart size={40} />}
-          title="Нет лайкнутых треков"
-          description="Нажми на сердечко у трека, чтобы добавить его в любимые"
+          title={t('likes_empty_title')}
+          description={t('likes_empty_desc')}
         />
       )}
 
       {!error && loading && (
-        <div className={gridClassName} ref={(el) => { (likesGridRef as any).current = el; (likesSidebarAnimRef as any).current = el; }}>
+        <div className={gridClassName} ref={likesGridRef}>
           {Array.from({ length: likesInitialSkeletonCount }).map((_, i) => (
             <TrackCardSkeleton key={`likes-skeleton-${i}`} />
           ))}
@@ -557,7 +622,7 @@ export function LikesPage() {
 
       {!loading && !error && (displayedTracks.length > 0 || exitItems.size > 0) && (
         <>
-          <div className={`${gridClassName} animate-slide-up`} ref={(el) => { (likesGridRef as any).current = el; (likesSidebarAnimRef as any).current = el; }}>
+          <div className={`${gridClassName} animate-slide-up`} ref={likesGridRef}>
             {displayedTracks.map((track, i) => (
               <TrackCard key={track.id} track={track} queue={displayedTracks} index={i} />
             ))}

@@ -2,6 +2,7 @@ import { useEffect, useState, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { HashRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useUIStore } from '@/store/ui';
+import { useI18nStore } from '@/store/i18n';
 import { usePlayerStore } from '@/store/player';
 import { useListenPartyStore } from '@/store/listenParty';
 import { scAPI } from '@/api/soundcloud';
@@ -228,13 +229,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     if (this.state.error) {
       return (
         <div className="flex flex-col items-center justify-center h-screen gap-4 text-text-dim">
-          <p className="text-lg font-semibold text-red-400">Что-то пошло не так</p>
+          <p className="text-lg font-semibold text-red-400">{useI18nStore.getState().t('something_went_wrong')}</p>
           <p className="text-sm">{(this.state.error as Error).message}</p>
           <button
             className="px-4 py-2 rounded bg-surface-alt hover:bg-surface transition-colors"
             onClick={() => this.setState({ error: null })}
           >
-            Попробовать снова
+            {useI18nStore.getState().t('try_again')}
           </button>
         </div>
       );

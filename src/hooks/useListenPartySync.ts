@@ -27,29 +27,37 @@ export function useListenPartySync() {
   }, [isActive]);
 
   // ── SEEK ──────────────────────────────────────────────────────────────────
+  // Детектируем только ручные перемотки, а не естественный ход воспроизведения.
+  // При обычном воспроизведении currentTime растёт ~1 сек/сек, поэтому порог
+  // должен быть значительно больше ожидаемого дрейфа между тиками стора.
   const prevTimeRef     = useRef<number>(0);
+  const prevPlayingRef2 = useRef<boolean>(false);
   const seekDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!isActive) { prevTimeRef.current = 0; return; }
 
-    return usePlayerStore.subscribe((state, prevState) => {
+    return usePlayerStore.subscribe((state) => {
       const currentTime = state.currentTime;
-      const prev = prevTimeRef.current;
-      const delta = Math.abs(currentTime - prev);
-      const isPlaying = state.isPlaying;
-      // Уменьшили порог с 1.5 до 0.8 сек для детекции малых перемоток
-      // Убрали isNatural проверку для более точной детекции seek
-      if (delta > 0.8) {
+      const isPlaying   = state.isPlaying;
+      const prev        = prevTimeRef.current;
+      const delta       = currentTime - prev; // знак важен: назад — отрицательный
+
+      // Естественное воспроизведение: 0 < delta < 2.5 сек (с запасом на нерегулярность тиков)
+      // Считаем seek: прыжок назад ИЛИ прыжок вперёд > 2.5 сек
+      const isNaturalProgress = isPlaying && delta >= 0 && delta < 2.5;
+
+      if (!isNaturalProgress && Math.abs(delta) > 1.0) {
         if (seekDebounceRef.current) clearTimeout(seekDebounceRef.current);
-        // Уменьшили debounce с 150 до 50ms для быстрой реакции
         seekDebounceRef.current = setTimeout(() => {
           useListenPartyStore.getState().broadcastEvent({
             type: 'SEEK',
             position: currentTime,
           });
-        }, 50);
+        }, 200); // debounce 200ms — даём время завершить drag по прогресс-бару
       }
-      prevTimeRef.current = currentTime;
+
+      prevTimeRef.current   = currentTime;
+      prevPlayingRef2.current = isPlaying;
     });
   }, [isActive]);
 

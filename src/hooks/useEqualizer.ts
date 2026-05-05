@@ -34,6 +34,7 @@ let _connected = false;
 
 export function getAudioContext() { return _ctx; }
 export function getFilters() { return _filters; }
+export function getGainNode() { return _gainNode; }
 
 function ensureContext(audio: HTMLAudioElement): boolean {
   if (_connected) return true;
@@ -75,16 +76,13 @@ export function useEqualizer() {
   const setEqEnabled = useUIStore((s) => s.setEqEnabled);
   const initRef   = useRef(false);
 
-  // Подключаем Web Audio API к audio элементу
   useEffect(() => {
     const audio = usePlayerStore.getState().audioEl;
     if (!audio || initRef.current) return;
 
-    // Ждём первого взаимодействия (AudioContext требует user gesture)
     const tryInit = () => {
       if (ensureContext(audio)) {
         initRef.current = true;
-        // Применяем сохранённые настройки
         applyAllGains(eqGains, eqEnabled);
         document.removeEventListener('click', tryInit);
       }
@@ -94,7 +92,6 @@ export function useEqualizer() {
     return () => document.removeEventListener('click', tryInit);
   }, []); // eslint-disable-line
 
-  // Реагируем на изменение audioEl (перезагрузка)
   useEffect(() => {
     return usePlayerStore.subscribe((state) => {
       if (state.audioEl && !initRef.current) {
@@ -109,7 +106,6 @@ export function useEqualizer() {
     });
   }, [eqEnabled, eqGains]); // eslint-disable-line
 
-  // Применяем при изменении настроек
   useEffect(() => {
     if (initRef.current) applyAllGains(eqGains, eqEnabled);
   }, [eqGains, eqEnabled]);

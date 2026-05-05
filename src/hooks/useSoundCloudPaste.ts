@@ -20,7 +20,8 @@ export function useSoundCloudPaste() {
     let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     const handler = async (e: KeyboardEvent) => {
-      if (!((e.ctrlKey || e.metaKey) && e.key === 'v')) return;
+      // e.code — физическая клавиша, не зависит от раскладки (e.key на русской даёт 'м')
+      if (!((e.ctrlKey || e.metaKey) && e.code === 'KeyV')) return;
 
       const target = e.target as HTMLElement;
       if (

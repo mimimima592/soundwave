@@ -5,12 +5,14 @@ import { scAPI } from '@/api/soundcloud';
 import type { SCUser } from '@/types/soundcloud';
 import { PageHeader, Spinner, EmptyState, UserRow, RowSkeleton } from '@/components/common/UI';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useT } from '@/store/i18n';
 
 const INITIAL_LIMIT = 50;
 
 export function FollowingPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const t = useT();
   const [users, setUsers] = useState<SCUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -55,7 +57,7 @@ export function FollowingPage() {
       } catch (err) {
         if (!cancelled) {
           const msg = (err as Error).message;
-          setError(msg.includes('авторизаци') ? 'Требуется авторизация для просмотра подписок' : msg);
+          setError(msg.includes('авторизаци') ? t('following_auth_error') : msg);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -67,8 +69,8 @@ export function FollowingPage() {
   return (
     <div>
       <PageHeader
-        title="Подписки"
-        subtitle={targetUser ? targetUser.username : 'Загрузка...'}
+        title={t('following_title')}
+        subtitle={targetUser ? targetUser.username : t('loading')}
       />
 
       {loading && (
@@ -77,10 +79,10 @@ export function FollowingPage() {
         </div>
       )}
 
-      {error && <EmptyState title="Ошибка загрузки" description={error} />}
+      {error && <EmptyState title={t('error_loading')} description={error} />}
 
       {!loading && !error && users.length === 0 && (
-        <EmptyState icon={<User size={40} />} title="Нет подписок" description="Этот пользователь пока ни на кого не подписан" />
+        <EmptyState icon={<User size={40} />} title={t('following_empty_title')} description={t('following_empty_desc')} />
       )}
 
       {!loading && !error && users.length > 0 && (

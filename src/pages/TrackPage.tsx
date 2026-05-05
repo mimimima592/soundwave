@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Play, Pause, Heart, MessageCircle, Share2, Clock, Calendar, Music2, Send } from 'lucide-react';
+import { Play, Pause, Heart, MessageCircle, Share2, Clock, Calendar, Music2, Send, Download } from 'lucide-react';
 import { scAPI } from '@/api/soundcloud';
 import type { SCTrack, SCComment } from '@/types/soundcloud';
 import { usePlayerStore } from '@/store/player';
@@ -10,6 +10,7 @@ import { usePageCacheStore } from '@/store/pageCache';
 import { formatTime, hiResArtwork, formatCount, cn } from '@/utils/format';
 import { Spinner, EmptyState, TrackRow, CoverHeaderSkeleton, RowSkeleton } from '@/components/common/UI';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useT, useI18nStore } from '@/store/i18n';
 
 const TRACK_CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -123,7 +124,7 @@ function CommentTimeline({
         {isCurrent && (
           <div
             className="absolute inset-y-0 left-0 rounded-full pointer-events-none"
-            style={{ width: '100%', transformOrigin: 'left', transform: `scaleX(${progressPct / 100})`, background: 'rgb(var(--theme-accent) / 0.45)', transition: 'transform 0.5s linear' }}
+            style={{ width: '100%', transformOrigin: 'left', transform: `scaleX(${progressPct / 100})`, background: 'rgb(var(--theme-accent) / 0.45)', transition: 'transform 500ms linear' }}
           />
         )}
 
@@ -186,7 +187,7 @@ function CommentTimeline({
             top: '28px',
             left: popupLeft,
             transform: 'translateX(-50%)',
-            transition: (hoveredComment || suppressTransition) ? 'none' : 'transform 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+            transition: (hoveredComment || suppressTransition) ? 'none' : 'transform 600ms var(--ease-ios-out)',
             animation: 'popupFadeIn 0.2s ease-out',
           }}
         >
@@ -233,6 +234,7 @@ function CommentTimeline({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function TrackPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -359,7 +361,7 @@ export function TrackPage() {
     const optimistic: SCComment = {
       id: optimisticId, kind: 'comment', body: text, timestamp,
       created_at: new Date().toISOString(),
-      user: { id: 0, username: 'Вы', avatar_url: '', kind: 'user', permalink_url: '' } as any,
+      user: { id: 0, username: t('track_you'), avatar_url: '', kind: 'user', permalink_url: '' } as any,
       track_id: track.id,
     };
     setComments(prev => [optimistic, ...prev]);
@@ -378,7 +380,7 @@ export function TrackPage() {
       setComments(prev => prev.filter(c => c.id !== optimisticId));
       setTrack(prev => prev ? { ...prev, comment_count: Math.max(0, (prev.comment_count ?? 1) - 1) } : prev);
       setCommentText(text);
-      alert('Не удалось опубликовать комментарий');
+      alert(t('track_comment_error_msg'));
     } finally { setCommentLoading(false); }
   };
 
@@ -389,6 +391,25 @@ export function TrackPage() {
       setShowToast(true); setIsToastHiding(false);
       setTimeout(() => setIsToastHiding(true), 2700);
       setTimeout(() => { setShowToast(false); setIsToastHiding(false); }, 3000);
+    } catch {}
+  };
+
+  const handleDownloadArtwork = async () => {
+    if (!track) return;
+    const rawUrl = track.artwork_url || track.user?.avatar_url;
+    if (!rawUrl) return;
+    // Берём максимальное разрешение: t500x500
+    const hiResUrl = rawUrl.replace(/-large\./, '-t500x500.').replace(/-small\./, '-t500x500.');
+    try {
+      const res = await fetch(hiResUrl);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (track.title || 'artwork').replace(/[^a-zA-Zа-яА-Я0-9_\- ]/g, '').trim();
+      a.download = `${safeName} — cover.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch {}
   };
 
@@ -416,10 +437,10 @@ export function TrackPage() {
   }
 
   if (error || !track) {
-    return <EmptyState title="Не удалось загрузить трек" description={error || 'Трек не найден'} />;
+    return <EmptyState title={t('track_load_error')} description={error || t('track_not_found')} />;
   }
 
-  const createdDate = new Date(track.created_at).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
+  const createdDate = new Date(track.created_at).toLocaleDateString(useI18nStore.getState().language === 'en' ? 'en-US' : 'ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
   const hasComments = (track.comment_count ?? 0) > 0 || commentsLoading;
 
   return (
@@ -455,6 +476,18 @@ export function TrackPage() {
                 {showPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" className="translate-x-0.5" />}
               </div>
             </button>
+            {(track.artwork_url || track.user?.avatar_url) && (
+              <div className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleDownloadArtwork(); }}
+                  title="Скачать обложку"
+                  className="pb-button w-8 h-8 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ background: 'rgb(var(--theme-surface) / 0.92)', color: 'rgb(var(--theme-text))' }}
+                >
+                  <Download size={14} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -476,6 +509,15 @@ export function TrackPage() {
               >
                 <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />
               </button>
+              {(track.artwork_url || track.user?.avatar_url) && (
+                <button
+                  onClick={handleDownloadArtwork}
+                  title="Скачать обложку"
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-text-dim hover:text-accent hover:bg-surface-alt transition-all hover:scale-110"
+                >
+                  <Download size={18} />
+                </button>
+              )}
               <button
                 onClick={handleShare}
                 className="w-9 h-9 rounded-full flex items-center justify-center text-text-dim hover:text-accent hover:bg-surface-alt transition-all hover:scale-110"
@@ -523,7 +565,7 @@ export function TrackPage() {
               </div>
               {track.description.length > 180 && (
                 <button className="mt-2 text-xs text-accent hover:text-accent/80 transition-colors font-medium" onClick={() => setShowFullDescription(!showFullDescription)}>
-                  {showFullDescription ? 'Свернуть' : 'Показать всё'}
+                  {showFullDescription ? t('collapse') : t('show_all')}
                 </button>
               )}
             </div>
@@ -551,7 +593,7 @@ export function TrackPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-4">
               <MessageCircle size={17} className="text-accent flex-shrink-0" />
-              <h2 className="text-base font-semibold">Комментарии</h2>
+              <h2 className="text-base font-semibold">{t('track_comments')}</h2>
               <span className="text-sm text-text-dim bg-surface-alt px-2 py-0.5 rounded-full tabular-nums">
                 {track.comment_count ?? comments.length}
               </span>
@@ -561,14 +603,14 @@ export function TrackPage() {
             {oauthToken && (
               <div className="mb-5 flex gap-2.5 items-start">
                 <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-xs font-bold text-accent">Я</span>
+                  <span className="text-xs font-bold text-accent">{t('track_me')}</span>
                 </div>
                 <div className="flex-1 relative group/input">
                   <textarea
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePostComment(); } }}
-                    placeholder={isCurrent ? `Комментарий к ${formatTime(currentTime)}...` : 'Напиши комментарий...'}
+                    placeholder={isCurrent ? `${t('track_comment_placeholder_current')} ${formatTime(currentTime)}...` : t('track_comment_placeholder_default')}
                     disabled={commentLoading}
                     rows={2}
                     className="w-full px-3 py-2.5 pr-12 bg-surface-alt/40 border border-border/40 rounded-xl text-sm resize-none focus:outline-none focus:border-accent/50 focus:bg-surface-alt/60 transition-all disabled:opacity-50 leading-relaxed"
@@ -599,7 +641,7 @@ export function TrackPage() {
 
               {!commentsLoading && comments.map((comment) => {
                 const isActive = comment.id === activeCommentId;
-                const date = new Date(comment.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+                const date = new Date(comment.created_at).toLocaleDateString(useI18nStore.getState().language === 'en' ? 'en-US' : 'ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
                 return (
                   <div
                     key={comment.id}
@@ -653,7 +695,7 @@ export function TrackPage() {
           {/* Related tracks */}
           {relatedTracks.length > 0 && (
             <div className="flex-shrink-0 min-w-0" style={{ flexBasis: '220px', flexGrow: 1, maxWidth: '320px' }}>
-              <h2 className="text-base font-semibold mb-4">Похожие треки</h2>
+              <h2 className="text-base font-semibold mb-4">{t('track_related_label')}</h2>
               <div className="space-y-0.5">
                 {relatedTracks.map((rt, i) => (
                   <TrackRow
@@ -674,7 +716,7 @@ export function TrackPage() {
       ) : (
         relatedTracks.length > 0 && (
           <div className="mt-2">
-            <h2 className="text-base font-semibold mb-4">Похожие треки</h2>
+            <h2 className="text-base font-semibold mb-4">{t('track_related_label')}</h2>
             <div className="main-grid-layout animate-fade-in-only">
               {relatedTracks.slice(0, 10).map((rt, i) => {
                 const isRel = currentTrack?.id === rt.id;
@@ -683,18 +725,21 @@ export function TrackPage() {
                   <div key={rt.id} className="group cursor-pointer" onClick={() => navigate(`/track/${rt.id}`)}>
                     <div className="relative aspect-square rounded-xl overflow-hidden bg-surface-alt mb-3 ring-1 ring-white/5 group-hover:ring-white/10">
                       {rt.artwork_url ? (
-                        <img src={hiResArtwork(rt.artwork_url)} alt={rt.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" draggable={false} loading="lazy" />
+                        <img src={hiResArtwork(rt.artwork_url)} alt={rt.title} className="track-artwork-scale w-full h-full object-cover" draggable={false} loading="lazy"
+                        />
                       ) : (
                         <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center"><Music2 size={32} className="text-accent/40" /></div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); if (isRel) togglePlay(); else playTrack(rt, relatedTracks, i); }}
-                        className="absolute bottom-3 right-3 w-12 h-12 rounded-full bg-accent flex items-center justify-center opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 hover:scale-110 shadow-lg shadow-accent/40"
-                        style={{ color: 'rgb(var(--theme-accent-fg))' }}
-                      >
-                        {showRel ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="translate-x-0.5" />}
-                      </button>
+                      <div className="absolute bottom-3 right-3 transition-opacity duration-300 opacity-0 group-hover:opacity-100">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (isRel) togglePlay(); else playTrack(rt, relatedTracks, i); }}
+                          className="pb-button w-12 h-12 rounded-full bg-accent flex items-center justify-center shadow-lg shadow-accent/40"
+                          style={{ color: 'rgb(var(--theme-accent-fg))' }}
+                        >
+                          {showRel ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="translate-x-0.5" />}
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-0.5">
                       <div className={cn('text-sm font-semibold truncate', isRel && 'text-accent')}>{rt.title}</div>
@@ -718,7 +763,7 @@ export function TrackPage() {
           <div className="w-5 h-5 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-green-400"><polyline points="20 6 9 17 4 12" /></svg>
           </div>
-          <span>Ссылка скопирована</span>
+          <span>{t('track_link_copied')}</span>
         </div>,
         document.body
       )}

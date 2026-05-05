@@ -11,6 +11,7 @@ import { useUIStore } from '@/store/ui';
 import { usePageCacheStore } from '@/store/pageCache';
 import { useHistoryStore } from '@/store/history';
 import { scAPI } from '@/api/soundcloud';
+import { useT } from '@/store/i18n';
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 const HOME_CACHE_KEY = 'page:home';
@@ -69,32 +70,30 @@ function CarouselSection({
             ))}
           </div>
 
-          <button
-            onClick={() => onScroll('left')}
-            className={cn(
-              'absolute left-2 top-[148px] -translate-y-1/2 z-10 w-9 h-9 rounded-full flex items-center justify-center',
-              'bg-surface border border-border/40 text-text shadow-lg',
-              'transition-all duration-200 hover:scale-110 hover:bg-black/80 active:scale-95',
-              arrowState.left
-                ? 'opacity-0 group-hover/section:opacity-100'
-                : 'opacity-0 pointer-events-none'
-            )}
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => onScroll('right')}
-            className={cn(
-              'absolute right-2 top-[148px] -translate-y-1/2 z-10 w-9 h-9 rounded-full flex items-center justify-center',
-              'bg-surface border border-border/40 text-text shadow-lg',
-              'transition-all duration-200 hover:scale-110 hover:bg-black/80 active:scale-95',
-              arrowState.right
-                ? 'opacity-0 group-hover/section:opacity-100'
-                : 'opacity-0 pointer-events-none'
-            )}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+          <div className={cn(
+            'absolute left-2 top-[148px] -translate-y-1/2 z-10',
+            arrowState.left ? 'opacity-0 group-hover/section:opacity-100' : 'opacity-0 pointer-events-none',
+            'transition-opacity duration-200'
+          )}>
+            <button
+              onClick={() => onScroll('left')}
+              className="pb-button w-9 h-9 rounded-full flex items-center justify-center bg-surface border border-border/40 text-text shadow-lg hover:bg-black/80"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          </div>
+          <div className={cn(
+            'absolute right-2 top-[148px] -translate-y-1/2 z-10',
+            arrowState.right ? 'opacity-0 group-hover/section:opacity-100' : 'opacity-0 pointer-events-none',
+            'transition-opacity duration-200'
+          )}>
+            <button
+              onClick={() => onScroll('right')}
+              className="pb-button w-9 h-9 rounded-full flex items-center justify-center bg-surface border border-border/40 text-text shadow-lg hover:bg-black/80"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
         </>
       )}
     </div>
@@ -145,6 +144,7 @@ function SidebarSkeleton() {
 export function HomePage() {
   const navigate = useNavigate();
   const playTrack = usePlayerStore((s) => s.playTrack);
+  const t = useT();
   const togglePlay = usePlayerStore((s) => s.togglePlay);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -513,7 +513,7 @@ export function HomePage() {
         }
         return s;
       });
-      alert(previousState ? 'Ошибка отписки' : 'Ошибка подписки');
+      alert(previousState ? t('user_follow_error_sub') : t('user_follow_error_follow'));
     }
   };
 
@@ -543,14 +543,14 @@ export function HomePage() {
         'GET', null, oauthToken || ''
       );
       const resolved = res?.ok && res?.body ? JSON.parse(res.body) : null;
-      if (!resolved?.id) { setUrlError('Не удалось найти контент'); setTimeout(() => setUrlError(null), 3000); return; }
+      if (!resolved?.id) { setUrlError(t('content_not_found')); setTimeout(() => setUrlError(null), 3000); return; }
       switch (resolved.kind) {
         case 'track': navigate(`/track/${resolved.id}`); break;
         case 'playlist': navigate(`/playlist/${resolved.id}`); break;
         case 'user': navigate(`/user/${resolved.id}`); break;
-        default: setUrlError('Неподдерживаемый тип контента'); setTimeout(() => setUrlError(null), 3000);
+        default: setUrlError(t('content_unsupported')); setTimeout(() => setUrlError(null), 3000);
       }
-    } catch { setUrlError('Неверная ссылка или контент недоступен'); setTimeout(() => setUrlError(null), 3000); }
+    } catch { setUrlError(t('link_invalid')); setTimeout(() => setUrlError(null), 3000); }
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -559,17 +559,17 @@ export function HomePage() {
 
       {/* ── Main column ──────────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 overflow-y-auto pr-1 px-1">
-        <PageHeader title="Добро пожаловать" subtitle="Открой для себя что-то новое сегодня" />
+        <PageHeader title={t('home_title')} subtitle={t('home_subtitle')} />
 
         {urlError && (
           <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">{urlError}</div>
         )}
-        {error && <EmptyState title="Ошибка" description={error} />}
+        {error && <EmptyState title={t('error')} description={error} />}
 
         {!error && (
           <>
             <CarouselSection
-              title="Недавно прослушано"
+              title={t('home_recent')}
               tracks={(() => {
                 const local = localHistory.map(e => e.track);
                 const localIds = new Set(local.map(t => t.id));
@@ -584,7 +584,7 @@ export function HomePage() {
               onScroll={(d) => handleScroll(d, recentlyPlayedRef)}
             />
             <CarouselSection
-              title="Ещё по вкусу"
+              title={t('home_recommendations')}
               tracks={data?.moreOfWhatYouLike ?? []}
               loading={loading}
               containerRef={moreOfWhatYouLikeRef}
@@ -600,7 +600,7 @@ export function HomePage() {
               onScroll={(d) => handleScroll(d, yourMoodsRef)}
             />
             <CarouselSection
-              title="Мои треки"
+              title={t('home_my_tracks')}
               tracks={data?.myTracks ?? []}
               loading={loading}
               containerRef={myTracksRef}
@@ -609,7 +609,7 @@ export function HomePage() {
             />
 
             {!loading && !data?.recentlyPlayed.length && !data?.myTracks.length && localHistory.length === 0 && (
-              <EmptyState title="Нет данных" description="Войдите в аккаунт, чтобы увидеть персональные рекомендации" />
+              <EmptyState title={t('home_no_data')} description={t('home_login_hint')} />
             )}
           </>
         )}
@@ -624,7 +624,7 @@ export function HomePage() {
             {/* Artists */}
             <div className="overflow-y-auto overflow-x-hidden p-6 pt-[100px] scrollbar-hide">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-sm font-semibold tracking-widest uppercase text-text-dim">Интересные артисты</h3>
+                <h3 className="text-sm font-semibold tracking-widest uppercase text-text-dim">{t('home_interesting_artists')}</h3>
                 <button
                   onClick={handleRefreshArtists}
                   disabled={isRefreshing}
@@ -641,7 +641,7 @@ export function HomePage() {
                   opacity: isAnimating ? 0 : 1,
                   transform: isAnimating ? 'scale(0.98)' : 'scale(1)',
                   filter: isAnimating ? 'blur(4px)' : 'none',
-                  transition: 'opacity 0.3s, transform 0.3s, filter 0.3s',
+                  transition: 'opacity var(--dur-slow) var(--ease-ios), transform var(--dur-slow) var(--ease-ios), filter var(--dur-slow) var(--ease-ios)',
                 }}
               >
                 {displayedArtists.map((item) => {
@@ -653,7 +653,7 @@ export function HomePage() {
                       className="group flex items-center gap-3 rounded-xl px-2 py-2 -mx-2 hover:bg-white/5 transition-all duration-200 cursor-pointer"
                       onClick={() => navigate(`/user/${user.id}`)}
                     >
-                      <div className="w-11 h-11 rounded-full overflow-hidden bg-surface-alt flex-shrink-0 shadow-md transition-transform duration-300 group-hover:scale-105">
+                      <div className="thumb-hover w-11 h-11 rounded-full bg-surface-alt flex-shrink-0 shadow-md">
                         {user.avatar_url
                           ? <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" draggable={false} />
                           : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-accent/20 to-accent/5">
@@ -670,7 +670,7 @@ export function HomePage() {
                       <button
                         onClick={(e) => handleFollow(user.id, e)}
                         className={cn(
-                          'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center border transition-all duration-200 opacity-0 group-hover:opacity-100 hover:scale-105 active:scale-95',
+                          'flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center border pb-button transition-[background-color,color,border-color,opacity] duration-200 opacity-0 group-hover:opacity-100',
                           following.has(user.id) ? 'border-accent/50 text-accent bg-accent/10' : 'border-white/20 text-text-dim hover:border-accent/50 hover:text-accent hover:bg-accent/10'
                         )}
                       >
@@ -679,7 +679,7 @@ export function HomePage() {
                     </div>
                   );
                 })}
-                {!loading && displayedArtists.length === 0 && <div className="text-sm text-text-dim">Нет данных</div>}
+                {!loading && displayedArtists.length === 0 && <div className="text-sm text-text-dim">{t('home_no_data_sidebar')}</div>}
               </div>
             </div>
 
@@ -691,7 +691,7 @@ export function HomePage() {
                   className="text-sm font-semibold tracking-widest uppercase text-text-dim cursor-pointer hover:text-accent transition-colors"
                   onClick={() => navigate('/likes')}
                 >
-                  Лайки
+                  {t('home_sidebar_likes')}
                 </h3>
                 <button
                   onClick={() => navigate('/likes')}
@@ -713,7 +713,7 @@ export function HomePage() {
                       )}
                       onClick={(e) => { e.stopPropagation(); handlePlayTrack(track, index); }}
                     >
-                      <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-surface-alt shadow-md transition-transform duration-300 group-hover:scale-105">
+                      <div className="thumb-hover relative w-11 h-11 rounded-lg bg-surface-alt flex-shrink-0 shadow-md">
                         {(track.artwork_url || track.user?.avatar_url)
                           ? <img src={hiResArtwork(track.artwork_url || track.user?.avatar_url)} alt={track.title} className="w-full h-full object-cover" draggable={false} onError={(e) => { const img = e.currentTarget; const orig = track.artwork_url || track.user?.avatar_url || ''; if (img.src !== orig) { img.src = orig; } else { img.style.display = 'none'; } }} />
                           : <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center"><Music2 size={16} className="text-accent/40" /></div>}
@@ -741,7 +741,7 @@ export function HomePage() {
                     </div>
                   );
                 })}
-                {!loading && (data?.sidebarLikes ?? []).length === 0 && <div className="text-sm text-text-dim">Нет данных</div>}
+                {!loading && (data?.sidebarLikes ?? []).length === 0 && <div className="text-sm text-text-dim">{t('home_no_data_sidebar')}</div>}
               </div>
             </div>
 
@@ -754,7 +754,7 @@ export function HomePage() {
                     className="text-sm font-semibold tracking-widest uppercase text-text-dim cursor-pointer hover:text-accent transition-colors"
                     onClick={() => navigate('/history')}
                   >
-                    История
+                    {t('home_sidebar_history')}
                   </h3>
                   <button
                     onClick={() => navigate('/history')}
@@ -777,7 +777,7 @@ export function HomePage() {
                         )}
                         onClick={(e) => { e.stopPropagation(); handlePlayTrack(track, index); }}
                       >
-                        <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-surface-alt shadow-md transition-transform duration-300 group-hover:scale-105">
+                        <div className="thumb-hover relative w-11 h-11 rounded-lg bg-surface-alt flex-shrink-0 shadow-md">
                           {(track.artwork_url || track.user?.avatar_url)
                             ? <img src={hiResArtwork(track.artwork_url || track.user?.avatar_url)} alt={track.title} className="w-full h-full object-cover" draggable={false} onError={(e) => { const img = e.currentTarget; const orig = track.artwork_url || track.user?.avatar_url || ''; if (img.src !== orig) { img.src = orig; } else { img.style.display = 'none'; } }} />
                             : <div className="w-full h-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center"><Music2 size={16} className="text-accent/40" /></div>}

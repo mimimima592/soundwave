@@ -49,6 +49,11 @@ interface UIState {
   addServerLikedIds: (ids: number[]) => void;
   isUpdatingLikes: boolean;
 
+  // Подписки — полный список ID загружается при старте
+  followingUserIds: Set<number>;
+  setFollowingUserIds: (ids: number[]) => void;
+  refreshFollowingIds: () => Promise<void>;
+
   // Лайки плейлистов (optimistic + синк с сервером)
   likedPlaylistIds: Set<string | number>; // Поддержка и ID (number) и URN (string) для системных плейлистов
   optimisticPlaylists: Map<string | number, SCPlaylist>; // плейлисты, лайкнутые до подтверждения сервера
@@ -78,6 +83,8 @@ interface UIState {
   // Производительность
   freezeHoverOnScroll: boolean;
   setFreezeHoverOnScroll: (v: boolean) => void;
+  performanceMode: boolean;
+  setPerformanceMode: (v: boolean) => void;
 
 
   // OBS Widget
@@ -94,6 +101,7 @@ interface UIState {
   setWidgetAccentColor: (v: string) => void;
   widgetBgType: 'artwork' | 'blur';
   setWidgetBgType: (v: 'artwork' | 'blur') => void;
+
 
   // Hydration
   hydrated: boolean;
@@ -191,6 +199,7 @@ export const useUIStore = create<UIState>((set, get) => ({
     window.electron?.settings.set('eqGains', gains);
   },
 
+
   widgetOverlayOpacity: 0.6,
   setWidgetOverlayOpacity: (v) => {
     set({ widgetOverlayOpacity: v });
@@ -222,6 +231,29 @@ export const useUIStore = create<UIState>((set, get) => ({
   },
 
   likedTrackIds: new Set<number>(),
+  followingUserIds: new Set<number>(),
+
+  setFollowingUserIds: (ids) => {
+    set({ followingUserIds: new Set(ids) });
+  },
+
+  refreshFollowingIds: async () => {
+    const { oauthToken } = get();
+    if (!oauthToken) return;
+    try {
+      const { scAPI } = await import('@/api/soundcloud');
+      const me = await scAPI.getMe();
+      if (!me?.id) return;
+      // Загружаем до 5000 подписок — покрывает большинство случаев
+      const res = await scAPI.getUserFollowings(me.id, 5000);
+      if (res?.collection) {
+        const ids = res.collection.map((u: any) => Number(u.id)).filter(Boolean);
+        set({ followingUserIds: new Set(ids) });
+      }
+    } catch (e) {
+      console.error('[followingUserIds] refresh error:', e);
+    }
+  },
   optimisticTracks: new Map<number, SCTrack>(),
   isUpdatingLikes: false,
 
@@ -491,6 +523,13 @@ export const useUIStore = create<UIState>((set, get) => ({
     set({ freezeHoverOnScroll: v });
     localStorage.setItem('freezeHoverOnScroll', JSON.stringify(v));
   },
+  performanceMode: false,
+  setPerformanceMode: (v) => {
+    set({ performanceMode: v });
+    localStorage.setItem('performanceMode', JSON.stringify(v));
+    // Применяем класс на <html> чтобы CSS-правила могли реагировать
+    document.documentElement.classList.toggle('perf-mode', v);
+  },
 
 
   hydrated: false,
@@ -549,6 +588,15 @@ export const useUIStore = create<UIState>((set, get) => ({
         const s = localStorage.getItem('freezeHoverOnScroll');
         return s !== null ? JSON.parse(s) : false;
       })(),
+      performanceMode: (() => {
+        const s = localStorage.getItem('performanceMode');
+        const v = s !== null ? JSON.parse(s) : false;
+        // Сразу применяем класс на <html> на момент гидратации
+        if (typeof document !== 'undefined') {
+          document.documentElement.classList.toggle('perf-mode', v);
+        }
+        return v;
+      })(),
       hydrated: true,
     });
 
@@ -570,6 +618,9 @@ export const useUIStore = create<UIState>((set, get) => ({
           get().addServerLikedIds(trackIds);
           console.log('[UI] Synced liked tracks from API on hydrate:', trackIds.length);
         }
+
+        // Загружаем список подписок для надёжной проверки isFollowing
+        get().refreshFollowingIds().catch(() => {});
       } catch (err) {
         console.error('[UI] Failed to sync liked data on hydrate:', err);
       }

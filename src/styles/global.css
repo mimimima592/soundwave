@@ -16,6 +16,20 @@
   --theme-accent-hover: 255 110 30;
   --theme-blur: 20px;
   --theme-radius: 12px;
+
+  /* ─── Motion Design Tokens (iOS-inspired) ──────────────────────────────────
+     Единая шкала длительностей и easing для всех анимаций приложения.
+     --ease-ios     — основной curve для transitions (slow start, fast end)
+     --ease-ios-out — для появления (sheet/popup) — мягкий settling
+     --ease-spring  — для tactile bounces (heart pop, scale press)
+     Длительности: 120ms — micro feedback, 220ms — state, 320ms — popup, 420ms — page */
+  --ease-ios:        cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-ios-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast:        120ms;
+  --dur-base:        220ms;
+  --dur-slow:        320ms;
+  --dur-page:        420ms;
 }
 
 * {
@@ -69,9 +83,13 @@ body {
   pointer-events: none;
   /* Изолируем рендеринг для снижения GPU нагрузки без изменения внешнего вида */
   contain: strict;
+  /* Принудительно создаём compositor layer чтобы blur пересчитывался отдельно
+     и не инвалидировался при перерисовке остального UI (hover, скролл и т.д.) */
+  isolation: isolate;
   /* Убираем transition opacity — он форсирует repaint при каждой смене трека */
 }
-.background-layer img {
+.background-layer img,
+.background-layer video {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -120,36 +138,44 @@ body {
   border-radius: 999px;
   background: rgb(var(--theme-border) / 0.8);
   cursor: pointer;
-  transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: height var(--dur-base) var(--ease-ios);
 }
 .progress-slider:hover {
   height: 5px;
 }
 .progress-slider-fill {
   position: absolute;
-  inset-block: 0;
+  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
   background: rgb(var(--theme-accent));
-  border-radius: inherit;
-  transform-origin: left;
+  border-radius: 999px;
+  transform-origin: left center;
   transition: none;
+  will-change: transform;
+  /* clip-path обрезает fill по скруглённым краям без overflow:hidden на родителе */
+  clip-path: inset(0 0 0 0 round 999px);
 }
 .progress-slider-thumb {
   position: absolute;
   top: 50%;
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: rgb(var(--theme-text));
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) scale(0);
   opacity: 0;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.5);
+  transition:
+    opacity   var(--dur-fast) var(--ease-ios),
+    transform var(--dur-fast) var(--ease-spring);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.4);
+  pointer-events: none;
+  z-index: 1;
 }
 .progress-slider:hover .progress-slider-thumb {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1.05);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 /* Текстовое обрезание */
@@ -195,30 +221,30 @@ aside.fixed {
 
 /* Анимации */
 @keyframes fadeInSlideUp {
-  from { opacity: 0; transform: translateY(14px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes fadeOutSlideDown {
   from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 0; transform: translateY(8px); }
 }
 
 @keyframes lyricsPageEnter {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .lyrics-page-enter {
-  animation: lyricsPageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: lyricsPageEnter var(--dur-page) var(--ease-ios-out) forwards;
 }
 
 .lyrics-artwork {
-  animation: lyricsArtwork 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: lyricsArtwork 520ms var(--ease-ios-out) forwards;
 }
 
 @keyframes lyricsArtwork {
-  from { opacity: 0; transform: scale(0.9) translateY(10px); }
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
@@ -228,53 +254,188 @@ aside.fixed {
 }
 
 .animate-slide-up {
-  animation: fadeInSlideUp 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fadeInSlideUp var(--dur-slow) var(--ease-ios-out) both;
 }
 
 /* Для больших контейнеров (гриды, списки) — только opacity, без transform.
    transform на контейнере с 30+ детьми форсирует compositor на всё поддерево. */
 .animate-fade-in-only {
-  animation: fadeIn 0.25s ease-out both;
+  animation: fadeIn var(--dur-base) var(--ease-ios-out) both;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
+  animation: fadeIn var(--dur-slow) var(--ease-ios-out);
 }
 
 .animate-slide-down {
-  animation: fadeOutSlideDown 0.22s ease-in;
+  animation: fadeOutSlideDown var(--dur-base) var(--ease-ios);
 }
 
 @keyframes cardExit {
   0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.84) translateY(8px); }
+  100% { opacity: 0; transform: scale(0.92) translateY(6px); }
 }
 .card-exit {
-  animation: cardExit 0.3s ease-out forwards;
+  animation: cardExit var(--dur-slow) var(--ease-ios) forwards;
   pointer-events: none;
 }
 
 @keyframes heartPop {
   0%   { transform: scale(1); }
-  25%  { transform: scale(1.5); }
-  55%  { transform: scale(0.88); }
-  80%  { transform: scale(1.12); }
+  35%  { transform: scale(1.35); }
+  65%  { transform: scale(0.94); }
   100% { transform: scale(1); }
 }
 
 @keyframes heartUnpop {
   0%   { transform: scale(1); }
-  30%  { transform: scale(0.65); }
-  70%  { transform: scale(1.05); }
+  35%  { transform: scale(0.78); }
   100% { transform: scale(1); }
 }
 
 .heart-pop {
-  animation: heartPop 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  animation: heartPop 480ms var(--ease-spring) both;
 }
 
+@keyframes soundbar {
+  0%   { transform: scaleY(0.25); }
+  100% { transform: scaleY(1); }
+}
+
+/* ─── Performance mode — отключает все transitions и animations ───────────────
+   Hover-стили остаются (мгновенный flip без анимации), DWM не дёргается на
+   transition-фазе hover. Снижает GPU нагрузку при наведении мыши на 70-90%. */
+html.perf-mode *,
+html.perf-mode *::before,
+html.perf-mode *::after {
+  transition: none !important;
+  animation-duration: 0.001s !important;
+  animation-iteration-count: 1 !important;
+}
+
+/* Soundbar и другие критически нужные анимации оставляем — они идут в
+   изолированных контейнерах и не влияют на основное взаимодействие */
+html.perf-mode .queue-soundbar > div {
+  animation-duration: 0.7s !important;
+  animation-iteration-count: infinite !important;
+}
+.queue-row {
+  contain: layout style paint;
+  background: transparent;
+  transition:
+    background-color var(--dur-base) var(--ease-ios),
+    opacity          var(--dur-base) var(--ease-ios);
+}
+.queue-row:hover {
+  background: rgb(var(--theme-surface-alt) / 0.35);
+}
+.queue-row.is-current {
+  background: rgb(var(--theme-surface-alt) / 0.6);
+}
+.queue-row.is-played:not(:hover) {
+  opacity: 0.5;
+}
+.queue-row.is-drag-over {
+  background: rgb(var(--theme-accent) / 0.08);
+  box-shadow: inset 0 2px 0 rgb(var(--theme-accent) / 0.4);
+}
+
+/* Артворк — grayscale через CSS, без React state */
+.queue-row.is-played:not(:hover) .queue-artwork-img {
+  filter: grayscale(0.4);
+}
+.queue-artwork-img {
+  filter: none;
+  transition: filter var(--dur-base) var(--ease-ios);
+}
+
+/* Hover-оверлей на обложке: невидимый по дефолту, viewable при :hover родителя */
+.queue-artwork-overlay {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-ios);
+}
+.queue-row:hover .queue-artwork-overlay,
+.queue-row.is-current.is-playing .queue-artwork-overlay {
+  opacity: 1;
+}
+
+/* Soundbar — виден когда играет и не hover */
+.queue-soundbar { display: none; }
+.queue-row.is-current.is-playing:not(:hover) .queue-soundbar { display: flex; }
+.queue-row.is-current.is-playing:not(:hover) .queue-play-btn { display: none; }
+
+/* Play кнопка — виден на hover, скрыт когда соундбар */
+.queue-play-btn { display: none; }
+.queue-row:hover .queue-play-btn { display: flex; }
+
+/* Время и trash — переключаются через :hover */
+.queue-row .queue-time { display: inline; }
+.queue-row .queue-trash { display: none; }
+.queue-row:hover .queue-time { display: none; }
+.queue-row:hover .queue-trash { display: flex; }
+.queue-row.no-trash:hover .queue-time { display: inline; }
+.queue-row.no-trash:hover .queue-trash { display: none; }
+
+.queue-trash {
+  color: rgb(var(--theme-text-dim));
+  background: transparent;
+  transition:
+    color            var(--dur-fast) var(--ease-ios),
+    background-color var(--dur-fast) var(--ease-ios),
+    transform        var(--dur-fast) var(--ease-spring);
+}
+.queue-trash:hover {
+  color: rgb(var(--theme-text));
+  background: rgb(var(--theme-border) / 0.5);
+  transform: scale(1.08);
+}
+.queue-trash:active { transform: scale(0.92); transition-duration: 80ms; }
+
+/* Дочерние элементы NavLink в сайдбаре не должны генерировать свои pointerover.
+   Курсор всё равно срабатывает на родительском NavLink — визуально ничего не меняется,
+   но при быстром движении мыши событий генерируется в разы меньше. */
+aside nav a > * {
+  pointer-events: none;
+}
+
+/* Header buttons — hover через CSS вместо inline JS */
+.queue-header-btn {
+  color: rgb(var(--theme-text-dim));
+  background: transparent;
+  transition:
+    color            var(--dur-fast) var(--ease-ios),
+    background-color var(--dur-fast) var(--ease-ios);
+}
+.queue-header-btn:hover {
+  color: rgb(var(--theme-text));
+  background: rgb(var(--theme-surface-alt));
+}
+
+/* ─── PlayerBar buttons — iOS motion tokens ─── */
+.pb-button {
+  /* Только конкретные свойства вместо transition-all чтобы браузер
+     не следил за изменением других CSS-свойств впустую */
+  transition:
+    background-color var(--dur-base) var(--ease-ios),
+    color            var(--dur-base) var(--ease-ios),
+    transform        var(--dur-fast) var(--ease-spring);
+}
+.pb-button:hover  { transform: scale(1.08); }
+.pb-button:active { transform: scale(0.92); transition-duration: 80ms; }
+
+/* ─── Sidebar toggle button — scale на самой кнопке,
+       translateY живёт на wrapper'е ─── */
+.sidebar-toggle-button {
+  transition:
+    background-color var(--dur-base) var(--ease-ios),
+    color            var(--dur-base) var(--ease-ios),
+    transform        var(--dur-fast) var(--ease-spring);
+}
+.sidebar-toggle-button:hover  { transform: scale(1.08); }
+.sidebar-toggle-button:active { transform: scale(0.92); transition-duration: 80ms; }
+
 .heart-unpop {
-  animation: heartUnpop 0.3s ease both;
+  animation: heartUnpop var(--dur-slow) var(--ease-ios) both;
 }
 
 @keyframes skeletonShimmer {
@@ -318,6 +479,36 @@ aside.fixed {
 .main-grid-layout > * {
   width: 100%;
   min-width: 0;
+  /* Браузер пропускает layout+paint для карточек вне viewport.
+     При 200 карточках реально рисуется только ~20 видимых —
+     анимация сайдбара больше не тормозит на больших гридах.
+     contain-intrinsic-size — примерный размер карточки чтобы
+     скроллбар не прыгал пока карточки "виртуализированы". */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
+/* ─── FLIP-анимация main при тоггле сайдбара ───
+   Логика в Sidebar.tsx: spacer прыгает на финальную ширину мгновенно
+   (один relayout вместо ~18 на анимации). Чтобы сохранить плавный
+   визуальный эффект движения main, тут используется transform —
+   он композитится на GPU и не вызывает relayout.
+
+   Переменная --sidebar-anim-offset выставляется JS:
+   - sidebar-anim=snap → ставим offset = (oldWidth − newWidth) без
+     transition. Main визуально остаётся на старой позиции.
+   - sidebar-anim=play → offset сбрасывается в 0 с transition.
+     Main плавно «доезжает» до нового положения.
+
+   Селектор бьёт в <main> внутри корневого app-контейнера. */
+html[data-sidebar-anim] main {
+  transform: translateX(var(--sidebar-anim-offset, 0px));
+  /* willChange только пока активна анимация — иначе main всегда
+     висит в отдельном compositor-слое и кушает память */
+  will-change: transform;
+}
+html[data-sidebar-anim="play"] main {
+  transition: transform 300ms var(--ease-ios);
 }
 
 /* Scrollbar hide */
@@ -377,14 +568,17 @@ aside.fixed {
 /* плавного появления скелетонов/изображений во время подгрузки. */
 [data-scrolling] img {
   transition-property: opacity !important;
-  transition-duration: 0.15s !important;
+  transition-duration: var(--dur-fast) !important;
 }
 
 
 
 
 
-/* Типографика заголовков — используем Syne */
+/* Типографика — базовый шрифт Inter */
+.font-inter {
+  font-family: 'Inter', system-ui, sans-serif;
+}
 
 /* Навбар-метка */
 
@@ -404,11 +598,52 @@ aside.fixed {
 /* Кнопка play — усиленный глоу */
 .play-btn-glow {
   box-shadow: 0 4px 20px rgb(var(--theme-accent) / 0.45);
-  transition: box-shadow 0.2s ease, transform 0.15s ease;
+  transition: box-shadow var(--dur-base) var(--ease-ios), transform var(--dur-fast) var(--ease-ios);
 }
 
-/* Для обложек треков — никаких GPU-форсирующих свойств */
+/* Wave Hero Card — hover через CSS */
+.wave-hero-card:hover .wave-hero-bg {
+  transform: scale(1.08) !important;
+}
 .track-artwork-scale {
+  backface-visibility: hidden;
+  transition: transform var(--dur-slow) var(--ease-ios);
+}
+/* will-change только при ховере — не держим 100+ GPU-слоёв постоянно */
+.group:hover .track-artwork-scale {
+  will-change: transform;
+  transform: scale(1.06);
+}
+
+/* Click-эффект — scale на контейнере, не на картинке.
+   Раньше scale был на img внутри → по краям вылезал серый фон контейнера.
+   Теперь весь контейнер сжимается вместе с содержимым. */
+.track-card-artwork {
+  transition: transform 80ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.group:active:not(:has(button:active)) .track-card-artwork {
+  transform: scale(0.96);
+}
+.group:active:not(:has(button:active)) .track-artwork-scale {
+  transform: scale(1);
+  transition-duration: 80ms;
+}
+
+/* Flash поверх при клике */
+.track-card-artwork::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, rgb(255 255 255 / 0.15) 0%, transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+  transition: opacity 400ms var(--ease-ios);
+}
+.group:active:not(:has(button:active)) .track-card-artwork::after {
+  opacity: 1;
+  transition-duration: 50ms;
 }
 
 /* PlayerBar — без isolation, не форсируем отдельный compositor layer */
@@ -417,3 +652,15 @@ aside.fixed {
 
 
 /* Субтитл плеера */
+
+/* ─── Thumbnail hover scale ───
+   Заменяет паттерн translateZ(0)+isolation inline + onMouseEnter/Leave.
+   will-change только при hover — не держим лишние compositor layers. */
+.thumb-hover {
+  transition: transform var(--dur-slow) var(--ease-ios);
+  overflow: hidden;
+}
+.thumb-hover:hover {
+  transform: scale(1.05);
+  will-change: transform;
+}

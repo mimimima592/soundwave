@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Trash2, Save, X } from 'lucide-react';
 import type { Theme, ThemeColors } from '@/themes/themes';
 import { useUIStore } from '@/store/ui';
+import { useT } from '@/store/i18n';
 
 interface Props {
   initial: Theme;
@@ -9,16 +10,7 @@ interface Props {
   isNew: boolean;
 }
 
-const COLOR_LABELS: { key: keyof ThemeColors; label: string; hint: string }[] = [
-  { key: 'bg',          label: 'Основной фон',        hint: 'Фон приложения' },
-  { key: 'surface',     label: 'Поверхность',          hint: 'Карточки, панели' },
-  { key: 'surfaceAlt',  label: 'Поверхность (hover)',  hint: 'Наведение, выделение' },
-  { key: 'border',      label: 'Границы',              hint: 'Разделители и контуры' },
-  { key: 'text',        label: 'Основной текст',       hint: 'Заголовки, важный текст' },
-  { key: 'textDim',     label: 'Вторичный текст',      hint: 'Подписи, приглушённый текст' },
-  { key: 'accent',      label: 'Акцент',               hint: 'Кнопка play, активные элементы' },
-  { key: 'accentHover', label: 'Акцент (hover)',       hint: 'Наведение на акцентные элементы' },
-];
+// COLOR_TOKENS computed inside ThemeEditor using useT()
 
 function rgbToHex(rgb: string): string {
   const [r, g, b] = rgb.split(' ').map(Number);
@@ -39,6 +31,17 @@ const label = (text: string) => (
 );
 
 export function ThemeEditor({ initial, onClose, isNew }: Props) {
+  const t = useT();
+  const COLOR_TOKENS: { key: keyof ThemeColors; label: string; hint: string }[] = [
+    { key: 'bg',          label: t('token_bg'),                hint: t('token_background') },
+    { key: 'surface',     label: t('token_surface_label'),     hint: t('token_surface') },
+    { key: 'surfaceAlt',  label: t('token_surface_alt_label'), hint: t('token_surface_alt') },
+    { key: 'border',      label: t('token_border_label'),      hint: t('token_border') },
+    { key: 'text',        label: t('token_text_label'),        hint: t('token_text') },
+    { key: 'textDim',     label: t('token_text_dim'),          hint: t('token_text_muted') },
+    { key: 'accent',      label: t('token_accent_label'),      hint: t('token_accent') },
+    { key: 'accentHover', label: t('token_accent_hover_label'),hint: t('token_accent_hover') },
+  ];
   const addCustomTheme    = useUIStore((s) => s.addCustomTheme);
   const updateCustomTheme = useUIStore((s) => s.updateCustomTheme);
   const deleteCustomTheme = useUIStore((s) => s.deleteCustomTheme);
@@ -160,7 +163,7 @@ export function ThemeEditor({ initial, onClose, isNew }: Props) {
         {/* Header — фиксирован */}
         <div className="flex-shrink-0 flex items-center justify-between px-6 py-4" style={S.header}>
           <h2 className="text-base font-semibold" style={{ color: 'rgb(var(--theme-text))' }}>
-            {isNew ? 'Новая тема' : 'Редактирование темы'}
+            {isNew ? t('theme_new') : t('theme_editing')}
           </h2>
           <button
             onClick={onClose}
@@ -176,7 +179,7 @@ export function ThemeEditor({ initial, onClose, isNew }: Props) {
 
           {/* Название */}
           <div>
-            {label('Название')}
+            {label(t('theme_name_label'))}
             <input
               type="text"
               value={draft.name}
@@ -191,9 +194,9 @@ export function ThemeEditor({ initial, onClose, isNew }: Props) {
 
           {/* Цветовая палитра */}
           <div>
-            {label('Цветовая палитра')}
+            {label(t('theme_color_palette'))}
             <div className="space-y-1.5">
-              {COLOR_LABELS.map(({ key, label: lbl, hint }) => (
+              {COLOR_TOKENS.map(({ key, label: lbl, hint }) => (
                 <div
                   key={key}
                   className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl"
@@ -227,25 +230,25 @@ export function ThemeEditor({ initial, onClose, isNew }: Props) {
 
           {/* Форма и прозрачность */}
           <div>
-            {label('Форма и прозрачность')}
+            {label(t('theme_shape'))}
             <div className="space-y-2">
               <Slider
-                label="Прозрачность сайдбара / плеера" min={20} max={100}
+                label={t('theme_sidebar_opacity')} min={20} max={100}
                 value={Math.round((draft.surfaceOpacity ?? 0.95) * 100)}
                 onChange={(v) => {
                   setDraft((d) => ({ ...d, surfaceOpacity: v / 100 }));
                   document.documentElement.style.setProperty('--theme-surface-opacity', String(v / 100));
                 }}
-                left="Прозрачный" right="Непрозрачный"
+                left={t('theme_transparent')} right={t('theme_opaque')}
               />
               <Slider
-                label="Скругление углов" min={0} max={28}
+                label={t('theme_border_radius')} min={0} max={28}
                 value={draft.radius ?? 12}
                 onChange={(v) => {
                   setDraft((d) => ({ ...d, radius: v }));
                   document.documentElement.style.setProperty('--theme-radius', `${v}px`);
                 }}
-                left="Квадратные" right="Круглые"
+                left={t('theme_square')} right={t('theme_round')}
               />
             </div>
           </div>

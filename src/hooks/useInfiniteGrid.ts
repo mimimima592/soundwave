@@ -21,9 +21,17 @@ export function useInfiniteGrid({
   threshold = 0.1,
   disableResizeLoad = false,
 }: UseInfiniteGridOptions) {
+  const getInitialColumnCount = () => {
+    const minCardWidth = 180;
+    const gap = 20;
+    const padding = 32;
+    // window.innerWidth доступен сразу, даже до mount
+    return Math.max(1, Math.floor((window.innerWidth - padding + gap) / (minCardWidth + gap)));
+  };
+
   const sentinelRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
-  const [columnCount, setColumnCount] = useState(5);
+  const [columnCount, setColumnCount] = useState(getInitialColumnCount);
 
   const getColumnsCount = useCallback(() => {
     if (gridRef.current) {
@@ -103,8 +111,8 @@ export function useInfiniteGrid({
     return remaining + cols;
   }, [loadingMore, items.length, getColumnsCount]);
 
-  // Initial skeleton count: at least 4 full rows (columnsCount * 4), minimum 12
-  const initialSkeletonCount = useMemo(() => Math.max(columnCount * 4, 12), [columnCount]);
+  // Initial skeleton count: 5 полных строк, минимум 15
+  const initialSkeletonCount = useMemo(() => Math.max(columnCount * 5, 15), [columnCount]);
 
   return {
     sentinelRef,

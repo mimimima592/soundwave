@@ -4,6 +4,17 @@ import { scAPI } from '@/api/soundcloud';
 import { useHistoryStore } from '@/store/history';
 import { waveManager } from '@/managers/waveManager';
 
+// Экспоненциальная кривая громкости (audio taper).
+// Слайдер 0..1 → audioEl.volume 0..1, но нарастание перцептивно равномерное.
+// Формула: (e^(k*v) - 1) / (e^k - 1), k=4
+// При v=0 → 0, v=0.1 → ~0.05, v=0.5 → ~0.27, v=1 → 1.0
+function toAudioVolume(v: number): number {
+  if (v <= 0) return 0;
+  if (v >= 1) return 1;
+  const k = 4;
+  return (Math.exp(k * v) - 1) / (Math.exp(k) - 1);
+}
+
 export type RepeatMode = 'off' | 'all' | 'one';
 
 interface PlayerState {
@@ -61,6 +72,7 @@ interface PlayerState {
   cycleRepeat: () => void;
   toggleAutoplay: () => void;
   addToQueue: (track: SCTrack) => void;
+  removeFromQueue: (index: number) => void;
   setWaveMode: (active: boolean) => void;
 
   setCurrentPlaylistId: (id: number | string | null) => void;
@@ -70,6 +82,12 @@ interface PlayerState {
   _updateDuration: (d: number) => void;
   _setPlayingState: (playing: boolean) => void;
   _onEnded: () => void;
+
+  // Пагинированная очередь: callback для подгрузки следующей страницы
+  // Страница регистрирует его при вызове playTrack. Если очередь исчерпана —
+  // player сначала вызывает этот loader, а не прыгает сразу на autoplay SC.
+  queueLoader: (() => Promise<SCTrack[]>) | null;
+  setQueueLoader: (loader: (() => Promise<SCTrack[]>) | null) => void;
 
   // Hydration
   hydrate: () => Promise<void>;
@@ -97,11 +115,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   pendingSeek: null,
   playHistoryTimeout: null,
   currentPlayTrackId: null,
+  queueLoader: null,
 
   setAudioEl: (el) => {
     set({ audioEl: el });
     if (el) {
-      el.volume = get().volume;
+      el.volume = toAudioVolume(get().volume);
       el.muted = get().muted;
     }
   },
@@ -226,6 +245,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       // Обновляем очередь если передали новую
       if (queue && typeof index === 'number') {
         set({ queue, queueIndex: index });
+        // Сбрасываем пагинационный loader если это новая очередь
+        // (loader должен быть установлен страницей через setQueueLoader отдельно)
+        if (index === 0) set({ queueLoader: null });
       } else if (!queue) {
         // Трек без контекста очереди — помещаем его как единственный элемент
         set({ queue: [track], queueIndex: 0 });
@@ -330,6 +352,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
           }
           return;
         } else if (autoplay && currentTrack) {
+          // Сначала пробуем подгрузить следующую страницу пагинации
+          const loader = get().queueLoader;
+          if (loader) {
+            try {
+              const moreTracks = await loader();
+              if (moreTracks.length > 0) {
+                const newQueue = [...get().queue, ...moreTracks];
+                const newIndex = get().queueIndex + 1;
+                set({ queue: newQueue });
+                playTrack(newQueue[newIndex], newQueue, newIndex);
+                return;
+              }
+            } catch (err) {
+              console.error('[QueueLoader] Ошибка подгрузки:', err);
+            }
+          }
           // Обычный autoplay: загружаем похожие треки
           try {
             const related = await scAPI.getRelatedTracks(currentTrack.id, 10);
@@ -383,15 +421,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setVolume: (volume) => {
     const { audioEl } = get();
     const v = Math.max(0, Math.min(1, volume));
-    if (audioEl) audioEl.volume = v;
+    if (audioEl) audioEl.volume = toAudioVolume(v);
     set({ volume: v, muted: v === 0 });
     window.electron?.settings.set('volume', v);
   },
 
   toggleMute: () => {
-    const { audioEl, muted } = get();
-    if (audioEl) audioEl.muted = !muted;
-    set({ muted: !muted });
+    const { audioEl, muted, volume } = get();
+    const newMuted = !muted;
+    if (audioEl) audioEl.volume = newMuted ? 0 : toAudioVolume(volume);
+    set({ muted: newMuted });
   },
 
   toggleShuffle: () => set((s) => ({ shuffle: !s.shuffle, shuffleHistory: [] })),
@@ -407,6 +446,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   addToQueue: (track) =>
     set((s) => ({ queue: [...s.queue, track] })),
+
+  removeFromQueue: (index) => {
+    const { queue, queueIndex } = get();
+    // Нельзя удалять текущий трек
+    if (index === queueIndex) return;
+    const newQueue = queue.filter((_, i) => i !== index);
+    // Если удаляем трек ДО текущего — индекс сдвигается на 1
+    const newIndex = index < queueIndex ? queueIndex - 1 : queueIndex;
+    // Пересчитываем shuffleHistory — убираем удалённый индекс и сдвигаем остальные
+    const newShuffleHistory = get().shuffleHistory
+      .filter(i => i !== index)
+      .map(i => i > index ? i - 1 : i);
+    set({ queue: newQueue, queueIndex: newIndex, shuffleHistory: newShuffleHistory });
+  },
+
+  setQueueLoader: (loader) => set({ queueLoader: loader }),
 
   setCurrentPlaylistId: (id) => set({ currentPlaylistId: id }),
 
@@ -431,6 +486,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
     // Обычный autoplay на последнем треке очереди
     if (autoplay && queueIndex === queue.length - 1 && currentTrack) {
+      // Сначала пробуем подгрузить следующую страницу пагинации
+      const loader = get().queueLoader;
+      if (loader) {
+        try {
+          const moreTracks = await loader();
+          if (moreTracks.length > 0) {
+            const newQueue = [...queue, ...moreTracks];
+            const newIndex = queueIndex + 1;
+            set({ queue: newQueue });
+            playTrack(newQueue[newIndex], newQueue, newIndex);
+            return;
+          }
+        } catch (err) {
+          console.error('[QueueLoader] Ошибка подгрузки в _onEnded:', err);
+        }
+      }
       try {
         const related = await scAPI.getRelatedTracks(currentTrack.id, 10);
         if (related.collection.length > 0) {
@@ -460,7 +531,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const { audioEl } = get();
       set({ volume });
       if (audioEl) {
-        audioEl.volume = volume;
+        audioEl.volume = toAudioVolume(volume);
       }
     }
   },

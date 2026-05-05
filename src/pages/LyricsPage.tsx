@@ -4,8 +4,10 @@ import { Music2, CheckCircle2, AlignLeft, Pause, Play } from 'lucide-react';
 import { usePlayerStore } from '@/store/player';
 import { useLyrics } from '@/hooks/useLyrics';
 import { hiResArtwork, cn } from '@/utils/format';
+import { useT } from '@/store/i18n';
 
 export function LyricsPage() {
+  const t = useT();
   const navigate   = useNavigate();
   const track      = usePlayerStore((s) => s.currentTrack);
   const isPlaying  = usePlayerStore((s) => s.isPlaying);
@@ -54,7 +56,7 @@ export function LyricsPage() {
               filter: 'blur(48px) brightness(0.28) saturate(1.6)',
               transform: 'scale(1.2)',
               opacity: artLoaded ? 1 : 0,
-              transition: 'opacity 0.8s ease',
+              transition: 'opacity 800ms var(--ease-ios-out)',
             }}
           />
         )}
@@ -149,7 +151,7 @@ export function LyricsPage() {
                   }}
                 >
                   {synced ? <CheckCircle2 size={11} /> : <AlignLeft size={11} />}
-                  {synced ? 'Синхронизировано' : 'Без синхронизации'}
+                  {synced ? t('lyrics_synced') : t('lyrics_unsynced')}
                 </span>
               )}
             </div>
@@ -184,12 +186,12 @@ export function LyricsPage() {
               </div>
               <div className="space-y-2">
                 <p className="text-sm font-semibold">
-                  {instrumental ? 'Инструментальный трек' : 'Текст не найден'}
+                  {instrumental ? t('lyrics_instrumental') : t('lyrics_not_found')}
                 </p>
                 <p className="text-xs text-text-dim opacity-50 leading-relaxed max-w-xs">
                   {instrumental
-                    ? 'У этого трека нет слов'
-                    : 'Не удалось найти текст для этого трека на lrclib'}
+                    ? t('lyrics_no_words')
+                    : t('lyrics_lrclib_error')}
                 </p>
               </div>
             </div>

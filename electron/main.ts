@@ -1445,6 +1445,75 @@ interface FetchResponse {
 ipcMain.handle(
   'net:fetch',
   async (_e, req: FetchRequest): Promise<FetchResponse> => {
+    // Сначала пробуем через Chromium (apiWindow.executeJavaScript) —
+    // это единственный путь, совместимый с Zapret и другими DPI-обходчиками,
+    // потому что трафик идёт через Chromium Network Stack, а не через Node.js/OpenSSL.
+    if (apiWindow && !apiWindow.isDestroyed()) {
+      try {
+        let cookieStr = '';
+        if (req.useAuthCookies) {
+          const authSession = getAuthSession();
+          const cookies = await authSession.cookies.get({ url: 'https://soundcloud.com' });
+          if (cookies && cookies.length > 0) {
+            cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
+            const datadomeCookie = cookies.find((c: any) => c.name === 'datadome');
+            if (datadomeCookie && req.headers) {
+              req.headers['X-Datadome-ClientId'] = datadomeCookie.value;
+            }
+          }
+        }
+
+        const extraHeaders: Record<string, string> = {
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Referer': 'https://soundcloud.com/',
+          'Origin': 'https://soundcloud.com',
+          ...(req.headers ?? {}),
+          ...(cookieStr ? { Cookie: cookieStr } : {}),
+        };
+
+        const params = JSON.stringify({
+          url: req.url,
+          method: req.method ?? 'GET',
+          headers: extraHeaders,
+          body: req.body ?? null,
+        });
+
+        const fetchCode = `
+          (async () => {
+            try {
+              const { url, method, headers, body } = ${params};
+              const options = {
+                method,
+                headers,
+                credentials: 'include',
+                ...(body ? { body } : {}),
+              };
+              const response = await fetch(url, options);
+              const text = await response.text();
+              return {
+                ok: response.ok,
+                status: response.status,
+                statusText: response.statusText || 'Status ' + response.status,
+                body: text,
+              };
+            } catch (err) {
+              return { ok: false, status: 0, statusText: err.message, body: '' };
+            }
+          })()
+        `;
+
+        const result = await apiWindow.webContents.executeJavaScript(fetchCode);
+        // status !== 0 означает что запрос дошёл до сервера (даже если HTTP-ошибка)
+        if (result.status !== 0) return result;
+        console.warn('[net:fetch] Chromium fetch failed, falling back to axios:', result.statusText);
+      } catch (err) {
+        console.warn('[net:fetch] executeJavaScript error, falling back to axios:', (err as Error).message);
+      }
+    }
+
+    // Fallback: axios (Node.js) — используется только если Chromium недоступен.
+    // Не работает с Zapret, но работает с Clash и системным прокси.
     try {
       let cookieStr = '';
       if (req.useAuthCookies) {
@@ -1452,8 +1521,6 @@ ipcMain.handle(
         const cookies = await authSession.cookies.get({ url: 'https://soundcloud.com' });
         if (cookies && cookies.length > 0) {
           cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-
-          // Добавляем X-Datadome-ClientId из кук если есть
           const datadomeCookie = cookies.find((c: any) => c.name === 'datadome');
           if (datadomeCookie && req.headers) {
             req.headers['X-Datadome-ClientId'] = datadomeCookie.value;
@@ -1477,7 +1544,6 @@ ipcMain.handle(
         'Sec-Ch-UA-Platform': '"Windows"',
         ...(cookieStr ? { Cookie: cookieStr } : {}),
       };
-
       const response = await axios({
         method: req.method ?? 'GET',
         url: req.url,
@@ -1486,7 +1552,6 @@ ipcMain.handle(
         responseType: 'text',
         validateStatus: () => true,
         timeout: 30000,
-        // Используем найденный порт Clash или системный прокси
         ...(detectedProxyPort && detectedProxyPort > 0
           ? { proxy: { host: '127.0.0.1', port: detectedProxyPort, protocol: 'http' } }
           : { proxy: false }),

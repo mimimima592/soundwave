@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Minus, Square, X, Copy, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useT } from '@/store/i18n';
 
 export function Titlebar() {
+  const t = useT();
   const navigate = useNavigate();
   const [isMaximized, setIsMaximized] = useState(false);
   const isMac = window.electron?.platform === 'darwin';
@@ -24,14 +26,14 @@ export function Titlebar() {
           <button
             onClick={() => navigate(-1)}
             className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-surface-alt/60 transition-all duration-150 active:scale-95"
-            aria-label="Назад"
+            aria-label={t('titlebar_back')}
           >
             <ChevronLeft size={15} className="text-text-dim" strokeWidth={2.2} />
           </button>
           <button
             onClick={() => navigate(1)}
             className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-surface-alt/60 transition-all duration-150 active:scale-95"
-            aria-label="Вперед"
+            aria-label={t('titlebar_forward')}
           >
             <ChevronRight size={15} className="text-text-dim" strokeWidth={2.2} />
           </button>
@@ -75,14 +77,14 @@ export function Titlebar() {
           <button
             onClick={() => window.electron?.window.minimize()}
             className="h-10 w-11 flex items-center justify-center hover:bg-surface-alt/50 transition-colors group"
-            aria-label="Свернуть"
+            aria-label={t('titlebar_minimize')}
           >
             <Minus size={13} strokeWidth={1.8} className="text-text-dim group-hover:text-text transition-colors" />
           </button>
           <button
             onClick={() => window.electron?.window.maximize()}
             className="h-10 w-11 flex items-center justify-center hover:bg-surface-alt/50 transition-colors group"
-            aria-label="Развернуть"
+            aria-label={t('titlebar_maximize')}
           >
             {isMaximized ? (
               <Copy size={11} strokeWidth={1.8} className="text-text-dim group-hover:text-text transition-colors" />
@@ -93,7 +95,7 @@ export function Titlebar() {
           <button
             onClick={() => window.electron?.window.close()}
             className="h-10 w-11 flex items-center justify-center hover:bg-red-500 transition-colors group"
-            aria-label="Закрыть"
+            aria-label={t('titlebar_close')}
           >
             <X size={13} strokeWidth={1.8} className="text-text-dim group-hover:text-white transition-colors" />
           </button>

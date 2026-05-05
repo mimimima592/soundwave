@@ -1,10 +1,11 @@
-import { type ReactNode, useState, useEffect } from 'react';
+import React, { type ReactNode, useState, useEffect, useRef, memo } from 'react';
 import { Play, Pause, Heart, Clock, User, Music2 } from 'lucide-react';
 import { cn, formatTime, formatCount, hiResArtwork } from '@/utils/format';
 import type { SCTrack, SCUser } from '@/types/soundcloud';
 import { useUIStore } from '@/store/ui';
 import { useListenPartyStore } from '@/store/listenParty';
 import { scAPI } from '@/api/soundcloud';
+import { useT } from '@/store/i18n';
 
 export function Spinner({ size = 24, className }: { size?: number; className?: string }) {
   return (
@@ -36,7 +37,7 @@ export function PageHeader({
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-text-dim" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+          <p className="text-sm text-text-dim font-inter">
             {subtitle}
           </p>
         )}
@@ -48,16 +49,20 @@ export function PageHeader({
 
 export function EmptyState({ icon, title, description }: { icon?: ReactNode; title: string; description?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-      {icon && <div className="mb-5 text-text-dim opacity-40">{icon}</div>}
-      <h3
-        className="text-base font-semibold mb-1.5"
-        style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
-      >
+    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in select-none">
+      {icon && (
+        <div
+          className="mb-5 flex items-center justify-center w-20 h-20 rounded-3xl"
+          style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))', opacity: 0.55 }}
+        >
+          {icon}
+        </div>
+      )}
+      <h3 className="text-[15px] font-semibold mb-1.5 font-inter" style={{ color: 'rgb(var(--theme-text))' }}>
         {title}
       </h3>
       {description && (
-        <p className="text-[13px] text-text-dim max-w-sm break-words overflow-hidden opacity-80">
+        <p className="text-[13px] max-w-xs leading-relaxed" style={{ color: 'rgb(var(--theme-text-dim))' }}>
           {description}
         </p>
       )}
@@ -83,7 +88,7 @@ export function Section({ title, children, action }: { title: string; children: 
 }
 
 /** Unified track row */
-export function TrackRow({
+function TrackRowImpl({
   track,
   index,
   isCurrent,
@@ -105,11 +110,13 @@ export function TrackRow({
   showIndex?: boolean;
 }) {
   const showPlaying = isCurrent && isPlaying;
+  const t = useT();
   const likedTrackIds = useUIStore((s) => s.likedTrackIds);
   const toggleLike = useUIStore((s) => s.toggleLike);
   const oauthToken = useUIStore((s) => s.oauthToken);
   const isLiked = likedTrackIds.has(track.id);
-  const [isHovered, setIsHovered] = useState(false);
+  // prefetch — через ref чтобы не вызывать re-render строки при каждом движении мыши
+  const prefetchedRef = useRef(false);
   const [prefetchedUrl, setPrefetchedUrl] = useState<string | null>(null);
 
   const { role, status } = useListenPartyStore();
@@ -122,14 +129,16 @@ export function TrackRow({
     onPlay();
   };
 
-  // OnHover preload stream URL
-  useEffect(() => {
-    if (isHovered && !prefetchedUrl && track.media?.transcodings) {
+  // Prefetch stream URL при первом hover. Без re-render строки.
+  const handleMouseEnter = () => {
+    if (prefetchedRef.current || prefetchedUrl) return;
+    prefetchedRef.current = true;
+    if (track.media?.transcodings) {
       scAPI.getStreamUrl(track)
         .then(({ url }) => setPrefetchedUrl(url))
         .catch((err) => console.error('[TrackRow] Failed to preload stream:', err));
     }
-  }, [isHovered, prefetchedUrl, track]);
+  };
 
   return (
     <div
@@ -139,8 +148,7 @@ export function TrackRow({
           ? 'bg-surface-alt/70'
           : 'hover:bg-surface-alt/40'
       )}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      onMouseEnter={handleMouseEnter}
     >
       {showIndex ? (
         <div className="w-6 flex-shrink-0 flex items-center justify-center">
@@ -168,7 +176,7 @@ export function TrackRow({
       )}
 
       <div
-        className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 cursor-pointer transition-transform duration-300 group-hover:scale-105"
+        className="thumb-hover w-10 h-10 rounded-lg flex-shrink-0 cursor-pointer"
         style={{ background: 'rgb(var(--theme-surface-alt))' }}
         onClick={onNavigateTrack}
       >
@@ -194,8 +202,7 @@ export function TrackRow({
 
       <div className="flex-1 min-w-0">
         <div
-          className={cn('text-[14px] font-semibold truncate cursor-pointer transition-colors leading-tight', isCurrent ? 'text-accent' : 'hover:text-accent')}
-          style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
+          className={cn('text-[14px] font-semibold font-inter truncate cursor-pointer transition-colors leading-tight', isCurrent ? 'text-accent' : 'hover:text-accent')}
           onClick={onNavigateTrack}
         >
           {track.title}
@@ -230,28 +237,42 @@ export function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); toggleLike(track.id, track); }}
           className={cn(
-            'flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-all duration-200',
-            'opacity-0 group-hover:opacity-100 hover:scale-110 active:scale-90',
+            'flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full transition-[background-color,color,opacity] duration-200',
+            'opacity-0 group-hover:opacity-100',
             isLiked ? 'opacity-100 text-accent' : 'text-text-dim hover:text-accent hover:bg-accent/10'
           )}
-          aria-label={isLiked ? 'Убрать лайк' : 'Лайкнуть'}
+          aria-label={isLiked ? t('unlike') : t('like')}
         >
-          <Heart size={13} className={cn('transition-all duration-200', isLiked && 'fill-current')} />
+          <Heart
+            size={13}
+            className={cn(
+              'transition-[transform,fill,color] duration-[120ms]',
+              '[button:hover_&]:scale-110 [button:active_&]:scale-90',
+              isLiked && 'fill-current'
+            )}
+            style={{ transitionTimingFunction: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+          />
         </button>
       )}
     </div>
   );
 }
 
+// memo предотвращает re-render всех строк когда у родителя меняется не относящееся к ним состояние
+export const TrackRow = memo(TrackRowImpl);
+
 /** User row */
 
 export function UserRow({ user, onClick, action }: { user: SCUser; onClick: () => void; action?: ReactNode }) {
+  const t = useT();
   return (
     <div
       className="group flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-150 cursor-pointer hover:bg-surface-alt/40"
       onClick={onClick}
     >
-      <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 transition-transform duration-300 group-hover:scale-105" style={{ background: 'rgb(var(--theme-surface-alt))' }}>
+      <div className="thumb-hover w-10 h-10 rounded-full flex-shrink-0"
+        style={{ background: 'rgb(var(--theme-surface-alt))' }}
+      >
         {user.avatar_url ? (
           <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" draggable={false} />
         ) : (
@@ -266,7 +287,7 @@ export function UserRow({ user, onClick, action }: { user: SCUser; onClick: () =
           {user.verified && <span className="text-accent text-xs flex-shrink-0">✓</span>}
         </div>
         <div className="text-[12px] text-text-dim mt-0.5 opacity-80">
-          {user.followers_count !== undefined ? `${formatCount(user.followers_count)} подписчиков` : 'Пользователь'}
+          {user.followers_count !== undefined ? `${formatCount(user.followers_count)} ${t('user_followers')}` : t('user')}
         </div>
       </div>
       {action}
@@ -290,9 +311,9 @@ export function RowSkeleton({ avatar = false }: { avatar?: boolean }) {
 export function TrackCardSkeleton() {
   return (
     <div className="min-w-0">
-      <div className="aspect-square rounded-xl skeleton-shimmer mb-3" />
-      <div className="h-4 w-4/5 rounded-lg skeleton-shimmer mb-1.5" />
-      <div className="h-3 w-3/5 rounded-lg skeleton-shimmer" />
+      <div className="aspect-square rounded-2xl skeleton-shimmer mb-3" />
+      <div className="h-[13px] w-4/5 rounded-md skeleton-shimmer mb-1.5" />
+      <div className="h-[11px] w-3/5 rounded-md skeleton-shimmer" />
     </div>
   );
 }
@@ -307,34 +328,50 @@ export function TabBar<T extends string>({
   active: T;
   onChange: (id: T) => void;
 }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [indicator, setIndicator] = React.useState({ left: 0, width: 0 });
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const activeBtn = container.querySelector<HTMLElement>('[data-active="true"]');
+    if (!activeBtn) return;
+    setIndicator({ left: activeBtn.offsetLeft + 12, width: activeBtn.offsetWidth - 24 });
+  }, [active]);
+
   return (
     <div
-      className="flex items-center gap-0.5 mb-6"
+      ref={containerRef}
+      className="relative flex items-center gap-0.5 mb-6"
       style={{ borderBottom: '1px solid rgb(var(--theme-border) / 0.4)' }}
     >
+      {/* Плавно скользящий индикатор активной вкладки */}
+      <div
+        className="absolute bottom-0 h-[2px] rounded-t-full pointer-events-none"
+        style={{
+          background: 'rgb(var(--theme-accent))',
+          left: indicator.left,
+          width: indicator.width,
+          transition: `left var(--dur-base) var(--ease-ios), width var(--dur-base) var(--ease-ios)`,
+        }}
+      />
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          data-active={active === tab.id ? 'true' : undefined}
           onClick={() => onChange(tab.id)}
           className={cn(
-            'px-4 py-2.5 text-[13.5px] font-medium transition-all duration-200 relative whitespace-nowrap rounded-t-lg',
+            'px-4 py-2.5 text-[13.5px] font-medium font-inter transition-colors duration-150 relative whitespace-nowrap rounded-t-lg',
             active === tab.id
               ? 'text-accent'
               : 'text-text-dim hover:text-text hover:bg-surface-alt/30'
           )}
-          style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
         >
           {tab.label}
           {tab.count !== undefined && (
             <span className={cn('ml-1.5 text-[11.5px] font-normal', active === tab.id ? 'text-accent/70' : 'text-text-dim/60')}>
               {formatCount(tab.count)}
             </span>
-          )}
-          {active === tab.id && (
-            <div
-              className="absolute bottom-0 left-3 right-3 h-[2px] rounded-t-full"
-              style={{ background: 'rgb(var(--theme-accent))' }}
-            />
           )}
         </button>
       ))}
@@ -359,7 +396,7 @@ export function PillFilters<T extends string>({
           key={opt.id}
           onClick={() => onChange(opt.id)}
           className={cn(
-            'px-3.5 py-1.5 rounded-full text-[12.5px] font-medium transition-all duration-200 hover:scale-105 active:scale-95',
+            'px-3.5 py-1.5 rounded-full text-[12.5px] font-medium pb-button',
             active === opt.id
               ? 'text-white shadow-sm'
               : 'text-text-dim hover:text-text'

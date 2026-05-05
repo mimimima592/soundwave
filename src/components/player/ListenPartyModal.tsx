@@ -6,12 +6,14 @@ import type { SCTrack } from '@/types/soundcloud';
 import { useListenParty } from '@/hooks/useListenParty';
 import { usePlayerStore } from '@/store/player';
 import { cn, hiResArtwork } from '@/utils/format';
+import { useT } from '@/store/i18n';
 
 interface Props {
   onClose: () => void;
 }
 
 export function ListenPartyModal({ onClose }: Props) {
+  const t = useT();
   const { status, role, sessionCode, connectedSince, listeners, listenerCount, suggestions, myListenerName, setMyListenerName, removeSuggestion } = useListenPartyStore();
   const { host, join, leave, suggestTrack } = useListenParty();
   const [joinCode, setJoinCode] = useState('');
@@ -45,7 +47,7 @@ export function ListenPartyModal({ onClose }: Props) {
 
   const handleJoin = async () => {
     if (!joinCode.trim()) return;
-    const name = nameInput.trim() || 'Слушатель';
+    const name = nameInput.trim() || t('party_default_name');
     setMyListenerName(name);
     await join(joinCode.trim(), name);
   };
@@ -83,7 +85,7 @@ export function ListenPartyModal({ onClose }: Props) {
               <Users size={15} style={{ color: 'rgb(var(--theme-accent))' }} strokeWidth={2} />
             </div>
             <span className="text-sm font-semibold tracking-tight" style={{ color: 'rgb(var(--theme-text))' }}>
-              Слушать вместе
+              {t('party_title')}
             </span>
             {(status === 'connected' || status === 'hosting') && totalInSession > 1 && (
               <span className="text-[11px] px-1.5 py-0.5 rounded-full font-medium"
@@ -104,7 +106,7 @@ export function ListenPartyModal({ onClose }: Props) {
         {view === 'menu' && (
           <div className="px-5 pb-5 flex flex-col gap-2.5">
             <p className="text-xs text-text-dim leading-relaxed mb-1">
-              До 5 человек слушают синхронно. P2P соединение — треки воспроизводятся независимо.
+              {t('party_desc')}
             </p>
 
             <button
@@ -117,8 +119,8 @@ export function ListenPartyModal({ onClose }: Props) {
                 <Users size={15} />
               </div>
               <div>
-                <div className="text-sm font-medium" style={{ color: 'rgb(var(--theme-text))' }}>Создать сессию</div>
-                <div className="text-xs text-text-dim mt-0.5">Ты выбираешь треки · до {MAX_LISTENERS} слушателей</div>
+                <div className="text-sm font-medium" style={{ color: 'rgb(var(--theme-text))' }}>{t('party_create_session')}</div>
+                <div className="text-xs text-text-dim mt-0.5">{t('party_create_desc')} {MAX_LISTENERS} {t('party_create_listeners')}</div>
               </div>
             </button>
 
@@ -132,8 +134,8 @@ export function ListenPartyModal({ onClose }: Props) {
                 <Wifi size={15} />
               </div>
               <div>
-                <div className="text-sm font-medium" style={{ color: 'rgb(var(--theme-text))' }}>Подключиться</div>
-                <div className="text-xs text-text-dim mt-0.5">Введи код сессии от хоста</div>
+                <div className="text-sm font-medium" style={{ color: 'rgb(var(--theme-text))' }}>{t('party_join_session')}</div>
+                <div className="text-xs text-text-dim mt-0.5">{t('party_join_desc')}</div>
               </div>
             </button>
           </div>
@@ -147,7 +149,7 @@ export function ListenPartyModal({ onClose }: Props) {
             {/* Код сессии */}
             <div>
               <div className="text-xs text-text-dim mb-2 font-medium tracking-wide uppercase" style={{ fontSize: 10 }}>
-                Код сессии
+                {t('party_session_code_label')}
               </div>
               <div className="flex items-center gap-2 px-3.5 py-3 rounded-xl"
                 style={{ background: 'rgb(var(--theme-bg) / 0.7)', border: '1px solid rgb(var(--theme-border) / 0.5)' }}>
@@ -167,13 +169,13 @@ export function ListenPartyModal({ onClose }: Props) {
                       }}
                     >
                       {copied ? <Check size={12} /> : <Copy size={12} />}
-                      {copied ? 'Скопировано' : 'Копировать'}
+                      {copied ? t('party_copied') : t('party_copy')}
                     </button>
                   </>
                 ) : (
                   <div className="flex items-center gap-2 text-text-dim">
                     <Loader2 size={14} className="animate-spin" />
-                    <span className="text-xs">Получаем код...</span>
+                    <span className="text-xs">{t('party_getting_code')}</span>
                   </div>
                 )}
               </div>
@@ -183,7 +185,7 @@ export function ListenPartyModal({ onClose }: Props) {
             {listeners.length > 0 && (
               <div>
                 <div className="text-xs text-text-dim mb-2 font-medium tracking-wide uppercase" style={{ fontSize: 10 }}>
-                  Слушатели ({listeners.length}/{MAX_LISTENERS})
+                  {t('party_listeners_label')} ({listeners.length}/{MAX_LISTENERS})
                 </div>
                 <div className="space-y-1.5">
                   {listeners.map((l) => (
@@ -213,7 +215,7 @@ export function ListenPartyModal({ onClose }: Props) {
                 >
                   <div className="text-xs text-text-dim font-medium tracking-wide uppercase flex items-center gap-1.5" style={{ fontSize: 10 }}>
                     <Music2 size={10} />
-                    Предложения ({suggestions.length})
+                    {t('party_suggestions_label')} ({suggestions.length})
                   </div>
                   <ChevronRight size={12} className={cn('text-text-dim transition-transform duration-200', showSuggestions && 'rotate-90')} />
                 </button>
@@ -250,13 +252,13 @@ export function ListenPartyModal({ onClose }: Props) {
                 {/* Имя */}
                 <div>
                   <div className="text-xs text-text-dim mb-2 font-medium tracking-wide uppercase" style={{ fontSize: 10 }}>
-                    Твоё имя
+                    {t('party_your_name_label')}
                   </div>
                   <input
                     ref={nameRef}
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="Как тебя зовут?"
+                    placeholder={t('party_your_name')}
                     className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all"
                     style={{
                       background: 'rgb(var(--theme-bg) / 0.7)',
@@ -271,14 +273,14 @@ export function ListenPartyModal({ onClose }: Props) {
                 {/* Код */}
                 <div>
                   <div className="text-xs text-text-dim mb-2 font-medium tracking-wide uppercase" style={{ fontSize: 10 }}>
-                    Код сессии
+                    {t('party_session_code_label')}
                   </div>
                   <input
                     ref={inputRef}
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleJoin(); }}
-                    placeholder="Вставь код от хоста..."
+                    placeholder={t('party_paste_code')}
                     className="w-full px-3.5 py-3 rounded-xl font-mono text-sm tracking-wider outline-none transition-all"
                     style={{
                       background: 'rgb(var(--theme-bg) / 0.7)',
@@ -296,7 +298,7 @@ export function ListenPartyModal({ onClose }: Props) {
                     className="flex-1 py-2.5 rounded-xl text-sm font-medium text-text-dim hover:text-text transition-colors"
                     style={{ background: 'rgb(var(--theme-surface-alt) / 0.5)', border: '1px solid rgb(var(--theme-border) / 0.3)' }}
                   >
-                    Назад
+                    {t('party_back')}
                   </button>
                   <button
                     onClick={handleJoin}
@@ -305,7 +307,7 @@ export function ListenPartyModal({ onClose }: Props) {
                     style={{ background: 'rgb(var(--theme-accent))', color: '#fff' }}
                   >
                     {status === 'joining' && <Loader2 size={14} className="animate-spin" />}
-                    {status === 'joining' ? 'Подключение...' : 'Подключиться'}
+                    {status === 'joining' ? t('party_status_connecting') : t('party_status_connect')}
                   </button>
                 </div>
               </>
@@ -325,6 +327,7 @@ export function ListenPartyModal({ onClose }: Props) {
 
 // ── Suggest search ──────────────────────────────────────────────────────────
 function SuggestSearch({ onSuggest }: { onSuggest: (track: SCTrack) => void }) {
+  const t = useT();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SCTrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -354,13 +357,13 @@ function SuggestSearch({ onSuggest }: { onSuggest: (track: SCTrack) => void }) {
   return (
     <div>
       <div className="text-xs text-text-dim mb-2 font-medium tracking-wide uppercase" style={{ fontSize: 10 }}>
-        Предложить трек хосту
+        {t('party_suggest_track')}
       </div>
       <div className="relative mb-2">
         <input
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder="Найти трек..."
+          placeholder={t('party_find_track')}
           className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none pr-8"
           style={{
             background: 'rgb(var(--theme-bg) / 0.7)',
@@ -414,6 +417,7 @@ function SuggestSearch({ onSuggest }: { onSuggest: (track: SCTrack) => void }) {
 function SuggestionCard({ suggestion, onAccept, onDecline }: {
   suggestion: any; onAccept: () => void; onDecline: () => void;
 }) {
+  const t = useT();
   return (
     <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
       style={{ background: 'rgb(var(--theme-surface-alt) / 0.4)', border: '1px solid rgb(var(--theme-border) / 0.3)' }}>
@@ -448,6 +452,7 @@ function SuggestionCard({ suggestion, onAccept, onDecline }: {
 function StatusBadge({ status, role, elapsed, listenerCount }: {
   status: string; role: 'leader' | 'listener'; elapsed: number; listenerCount: number;
 }) {
+  const t = useT();
   const isConnected = status === 'connected' || status === 'hosting';
   const isLoading = status === 'joining';
   const isDisconnected = status === 'disconnected';
@@ -469,21 +474,21 @@ function StatusBadge({ status, role, elapsed, listenerCount }: {
           </span>
           <span className="text-xs font-medium" style={{ color: 'rgb(34 197 94)' }}>
             {role === 'leader'
-              ? listenerCount === 0 ? 'Ждём слушателей...' : `${listenerCount} слушател${listenerCount === 1 ? 'ь' : 'я'}`
-              : 'Подключён к сессии'
+              ? listenerCount === 0 ? t('party_status_waiting_full') : `${listenerCount} ${listenerCount === 1 ? t('party_listener_singular') : t('party_listener_plural')}`
+              : t('party_status_connected')
             }
-            {elapsed > 0 && <span className="text-text-dim font-normal"> · {elapsed} мин</span>}
+            {elapsed > 0 && <span className="text-text-dim font-normal"> · {elapsed} {t('party_minutes_ago')}</span>}
           </span>
         </>
       ) : isDisconnected ? (
         <>
           <WifiOff size={13} style={{ color: 'rgb(239 68 68)' }} />
-          <span className="text-xs" style={{ color: 'rgb(239 68 68)' }}>Соединение потеряно</span>
+          <span className="text-xs" style={{ color: 'rgb(239 68 68)' }}>{t('party_lost_connection')}</span>
         </>
       ) : (
         <>
           <Loader2 size={13} className="animate-spin text-text-dim" />
-          <span className="text-xs text-text-dim">Подключаемся...</span>
+          <span className="text-xs text-text-dim">{t('party_connecting_short')}</span>
         </>
       )}
     </div>
@@ -491,6 +496,7 @@ function StatusBadge({ status, role, elapsed, listenerCount }: {
 }
 
 function LeaveButton({ onClick }: { onClick: () => void }) {
+  const t = useT();
   return (
     <button
       onClick={onClick}
@@ -498,7 +504,7 @@ function LeaveButton({ onClick }: { onClick: () => void }) {
       style={{ background: 'rgb(239 68 68 / 0.08)', border: '1px solid rgb(239 68 68 / 0.2)', color: 'rgb(239 68 68)' }}
     >
       <LogOut size={13} />
-      Завершить сессию
+      {t('party_end_session')}
     </button>
   );
 }

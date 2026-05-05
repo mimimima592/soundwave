@@ -7,6 +7,7 @@ import { useUIStore } from '@/store/ui';
 import { useListenPartyStore } from '@/store/listenParty';
 import { useShallow } from 'zustand/react/shallow';
 import { formatTime, hiResArtwork, formatCount, cn } from '@/utils/format';
+import { useT } from '@/store/i18n';
 
 interface Props {
   track: SCTrack;
@@ -32,6 +33,7 @@ const TrackCardInner = memo(function TrackCardInner({
   onPlay: () => void;
   onLike: (e: React.MouseEvent) => void;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
@@ -75,7 +77,7 @@ const TrackCardInner = memo(function TrackCardInner({
     return (
       <div
         className={cn(
-          'group flex items-center gap-3 p-2 rounded-xl transition-all duration-150 cursor-pointer',
+          'group flex items-center gap-3 p-2 rounded-xl transition-[background-color,color] duration-150 cursor-pointer',
           isCurrent ? 'bg-surface-alt/50' : 'hover:bg-surface-alt/40'
         )}
         onClick={handleCardClick}
@@ -129,7 +131,7 @@ const TrackCardInner = memo(function TrackCardInner({
     <div className="group cursor-pointer min-w-0" onClick={handleCardClick}>
       {/* Обложка */}
       <div
-        className="relative aspect-square rounded-2xl overflow-hidden mb-3"
+        className="track-card-artwork relative aspect-square rounded-2xl overflow-hidden mb-3"
         style={{ background: 'rgb(var(--theme-surface-alt))' }}
         onDoubleClick={onPlay}
       >
@@ -138,7 +140,7 @@ const TrackCardInner = memo(function TrackCardInner({
           <img
             src={imgError ? artworkSrc : hiResArtwork(artworkSrc)}
             alt={track.title}
-            className={cn('track-artwork-scale w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.06]', imgLoaded ? 'opacity-100' : 'opacity-0')}
+            className={cn('track-artwork-scale w-full h-full object-cover transition-opacity', imgLoaded ? 'opacity-100' : 'opacity-0')}
             draggable={false}
             onLoad={() => setImgLoaded(true)}
             onError={(e) => { if (!imgError) { setImgError(true); } else { (e.target as HTMLImageElement).style.display = 'none'; setImgLoaded(true); } }}
@@ -150,47 +152,52 @@ const TrackCardInner = memo(function TrackCardInner({
         )}
 
         {/* Градиент поверх */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/0 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/0 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150" />
 
-        {/* Play кнопка */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onPlay(); }}
+        {/* Play кнопка — wrapper держит opacity/position, кнопка держит scale */}
+        <div
           className={cn(
-            'absolute bottom-3 right-3 w-11 h-11 rounded-full flex items-center justify-center transition-all duration-300',
-            'hover:scale-110 active:scale-90',
-            showPlaying
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0'
+            'absolute bottom-3 right-3 transition-opacity duration-300',
+            showPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           )}
-          style={{
-            background: 'rgb(var(--theme-accent))',
-            color: 'rgb(var(--theme-accent-fg))',
-            boxShadow: '0 4px 20px rgb(var(--theme-accent) / 0.55)',
-          }}
         >
-          {showPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="translate-x-0.5" />}
-        </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onPlay(); }}
+            className="pb-button w-11 h-11 rounded-full flex items-center justify-center"
+            style={{
+              background: 'rgb(var(--theme-accent))',
+              color: 'rgb(var(--theme-accent-fg))',
+              boxShadow: '0 4px 20px rgb(var(--theme-accent) / 0.55)',
+            }}
+          >
+            {showPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="translate-x-0.5" />}
+          </button>
+        </div>
 
-        {/* Like кнопка */}
-        <button
-          onClick={handleLikeClick}
+        {/* Like кнопка — та же схема */}
+        <div
           className={cn(
-            'absolute bottom-3 left-3 w-8 h-8 rounded-full flex items-center justify-center transition-[opacity,transform] duration-300',
-            'hover:scale-110 active:scale-90',
-            isLiked
-              ? 'opacity-100 translate-y-0 shadow-lg'
-              : 'opacity-0 translate-y-3 group-hover:opacity-100 group-hover:translate-y-0 bg-black/40 hover:bg-black/60'
+            'absolute bottom-3 left-3 transition-opacity duration-300',
+            isLiked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           )}
-          style={isLiked ? { background: 'rgb(var(--theme-accent) / 0.85)', boxShadow: '0 0 16px rgb(var(--theme-accent) / 0.5)' } : {}}
         >
-          <Heart
-            size={13}
-            fill={isLiked ? 'currentColor' : 'none'}
-            className={cn('transition-colors duration-200', likeAnim === 'pop' && 'heart-pop', likeAnim === 'unpop' && 'heart-unpop')}
-            style={{ color: isLiked ? 'rgb(var(--theme-accent-fg))' : 'white' }}
-            onAnimationEnd={() => setLikeAnim(null)}
-          />
-        </button>
+          <button
+            onClick={handleLikeClick}
+            className={cn(
+              'pb-button w-8 h-8 rounded-full flex items-center justify-center',
+              isLiked ? 'shadow-lg' : 'bg-black/40 hover:bg-black/60'
+            )}
+            style={isLiked ? { background: 'rgb(var(--theme-accent) / 0.85)', boxShadow: '0 0 16px rgb(var(--theme-accent) / 0.5)' } : {}}
+          >
+            <Heart
+              size={13}
+              fill={isLiked ? 'currentColor' : 'none'}
+              className={cn('transition-colors duration-200', likeAnim === 'pop' && 'heart-pop', likeAnim === 'unpop' && 'heart-unpop')}
+              style={{ color: isLiked ? 'rgb(var(--theme-accent-fg))' : 'white' }}
+              onAnimationEnd={() => setLikeAnim(null)}
+            />
+          </button>
+        </div>
 
         {/* Счётчик */}
         {!isPlaylistItem && track.playback_count !== undefined && (
@@ -239,7 +246,7 @@ const TrackCardInner = memo(function TrackCardInner({
           {isPlaylistItem
             ? ((track as any).track_count !== undefined && (
                 <div className="text-[12px] text-text-dim flex-shrink-0 whitespace-nowrap opacity-70">
-                  {(track as any).track_count} треков
+                  {(track as any).track_count} {t('tracks_count')}
                 </div>
               ))
             : (track.duration !== undefined && (

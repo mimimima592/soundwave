@@ -16,29 +16,28 @@ const HEARTBEAT_INTERVAL = 5_000;
 function applyPartyEvent(evt: PartyEvent) {
   const { type, position, timestamp } = evt;
   const { trackData, queue, queueIndex } = evt as any;
-  const latency = (Date.now() - timestamp) / 1000;
+  // Компенсируем сетевую задержку: сколько секунд прошло пока пакет летел
+  const latency = Math.max(0, (Date.now() - timestamp) / 1000);
   const player = usePlayerStore.getState();
 
   switch (type) {
     case 'PLAY': {
-      player.seek(position ?? 0);
+      // Применяем позицию с учётом latency — трек уже продолжился пока пакет летел
+      const targetPos = (position ?? 0) + latency;
+      player.seek(targetPos);
       player.resume();
       break;
     }
     case 'PAUSE': {
       player.pause();
+      // При паузе latency не добавляем — момент паузы фиксированный
       if (position !== undefined) player.seek(position);
       break;
     }
     case 'SEEK': {
-      player.seek(position ?? 0);
-      // Дополнительная коррекция через 100ms для надежности
-      setTimeout(() => {
-        const currentPos = usePlayerStore.getState().currentTime;
-        if (Math.abs(currentPos - (position ?? 0)) > 0.5) {
-          player.seek(position ?? 0);
-        }
-      }, 100);
+      // Только один seek, без повторного через setTimeout (вызывает rebuffering)
+      const targetPos = (position ?? 0) + latency;
+      player.seek(targetPos);
       break;
     }
     case 'TRACK': {
@@ -57,13 +56,14 @@ function applyPartyEvent(evt: PartyEvent) {
       }));
       player.playTrack(safeTrack, q, queueIndex ?? 0);
       if (position !== undefined && position > 0) {
+        const targetPos = position + latency;
         const audio = usePlayerStore.getState().audioEl;
         if (audio) {
-          const apply = () => { player.seek(position); audio.removeEventListener('canplay', apply); };
-          if (audio.readyState >= 2) player.seek(position);
+          const apply = () => { player.seek(targetPos); audio.removeEventListener('canplay', apply); };
+          if (audio.readyState >= 2) player.seek(targetPos);
           else {
             audio.addEventListener('canplay', apply);
-            setTimeout(() => { audio.removeEventListener('canplay', apply); player.seek(position); }, 3000);
+            setTimeout(() => { audio.removeEventListener('canplay', apply); player.seek(targetPos); }, 3000);
           }
         }
       }
@@ -71,12 +71,19 @@ function applyPartyEvent(evt: PartyEvent) {
     }
     case 'HEARTBEAT': {
       if (position === undefined) break;
-      const serverTime = position + latency;
-      const localTime = usePlayerStore.getState().currentTime;
-      const isPlaying = usePlayerStore.getState().isPlaying;
-      // Синхронизируем только если расхождение > 3 сек и трек играет
-      if (Math.abs(localTime - serverTime) > 3 && isPlaying) {
-        player.seek(serverTime);
+      // Ожидаемая позиция у лидера на этот момент (учитываем latency)
+      const expectedPos = position + latency;
+      const localTime   = usePlayerStore.getState().currentTime;
+      const isPlaying   = usePlayerStore.getState().isPlaying;
+
+      if (!isPlaying) break; // не трогаем если на паузе
+
+      const drift = Math.abs(localTime - expectedPos);
+
+      // Мягкая коррекция: только если расхождение значительное (> 4 сек)
+      // Небольшой дрейф (< 4 сек) — нормально и не вызывает заикания
+      if (drift > 4) {
+        player.seek(expectedPos);
       }
       break;
     }

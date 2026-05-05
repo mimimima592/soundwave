@@ -6,10 +6,11 @@ import { useUIStore } from '@/store/ui';
 import { waveManager } from '@/managers/waveManager';
 import { TrackCard } from '@/components/player/TrackCard';
 import { TrackCardSkeleton } from '@/components/common/UI';
-import { useGridSidebarAnim } from '@/hooks/useGridSidebarAnim';
+
 import { cn, hiResArtwork } from '@/utils/format';
 import type { SCTrack } from '@/types/soundcloud';
 import type { WaveState } from '@/managers/waveManager';
+import { useT } from '@/store/i18n';
 
 const gridClassName = 'main-grid-layout';
 
@@ -42,7 +43,7 @@ function WaveBars({ active = true, size = 'md', color = 'white' }: {
             animationDelay: `${i * 0.12}s`,
             animationPlayState: active ? 'running' : 'paused',
             opacity: active ? 1 : 0.3,
-            transition: 'transform 0.3s ease, opacity 0.2s ease',
+            transition: 'transform var(--dur-slow) var(--ease-ios), opacity var(--dur-base) var(--ease-ios)',
           }}
         />
       ))}
@@ -54,26 +55,23 @@ function WaveBars({ active = true, size = 'md', color = 'white' }: {
 function WaveHeroCard({ track, isPlaying, isCurrent, onPlay }: {
   track: SCTrack; isPlaying: boolean; isCurrent: boolean; onPlay: () => void;
 }) {
+  const t = useT();
   const navigate = useNavigate();
   const artwork  = hiResArtwork(track.artwork_url || track.user?.avatar_url);
-  const [hovered, setHovered] = useState(false);
-
   return (
     <div
-      className="relative rounded-2xl overflow-hidden mb-6 animate-slide-up"
+      className="wave-hero-card relative rounded-2xl overflow-hidden mb-6 animate-slide-up"
       style={{ height: 196 }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       {/* Blur bg */}
       <div
-        className="absolute inset-0 bg-cover bg-center"
+        className="wave-hero-bg absolute inset-0 bg-cover bg-center"
         style={{
           backgroundImage: artwork ? `url(${artwork})` : undefined,
           background: artwork ? undefined : 'rgb(var(--theme-surface-alt))',
           filter: 'blur(32px) brightness(0.3) saturate(1.6)',
-          transform: hovered ? 'scale(1.08)' : 'scale(1.04)',
-          transition: 'transform 0.7s ease',
+          transform: 'scale(1.04)',
+          transition: 'transform 700ms var(--ease-ios-out)',
         }}
       />
       <div className="absolute inset-0" style={{ background: 'linear-gradient(120deg, rgba(0,0,0,0.4) 0%, transparent 70%)' }} />
@@ -95,7 +93,7 @@ function WaveHeroCard({ track, isPlaying, isCurrent, onPlay }: {
           <div className="flex items-center gap-2.5 mb-2">
             {isCurrent && isPlaying
               ? <WaveBars active size="sm" />
-              : <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">Сейчас в волне</span>
+              : <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/50">{t('wave_now_playing')}</span>
             }
           </div>
           <h2
@@ -141,6 +139,7 @@ function WaveHeroCard({ track, isPlaying, isCurrent, onPlay }: {
 
 // ── Hero скелетон ─────────────────────────────────────────────────────────────
 function WaveHeroSkeleton() {
+  const t = useT();
   return (
     <div className="relative rounded-2xl overflow-hidden mb-6 skeleton-shimmer" style={{ height: 196 }}>
       <div className="absolute inset-0" style={{ background: 'rgb(var(--theme-surface-alt) / 0.6)' }} />
@@ -159,6 +158,7 @@ function WaveHeroSkeleton() {
 
 // ── Стартовый экран ───────────────────────────────────────────────────────────
 function WaveStartScreen({ onStart, loading }: { onStart: () => void; loading: boolean }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center justify-center py-20 animate-slide-up">
       <div className="text-center max-w-sm">
@@ -175,10 +175,10 @@ function WaveStartScreen({ onStart, loading }: { onStart: () => void; loading: b
           </div>
         </div>
         <h2 className="font-bold mb-3 text-text" style={{ fontSize: '1.4rem', letterSpacing: '-0.03em' }}>
-          Волна
+          {t('wave_title')}
         </h2>
         <p className="text-sm text-text-dim mb-8 leading-relaxed">
-          Алгоритм проанализирует твои лайки и соберёт персональный поток музыки.
+          {t('wave_desc')}
         </p>
         <button
           onClick={onStart}
@@ -193,12 +193,12 @@ function WaveStartScreen({ onStart, loading }: { onStart: () => void; loading: b
           {loading ? (
             <>
               <WaveBars active size="sm" />
-              <span>Подбираю...</span>
+              <span>{t('wave_loading')}</span>
             </>
           ) : (
             <>
               <Waves size={15} />
-              <span>Запустить волну</span>
+              <span>{t('wave_start')}</span>
             </>
           )}
         </button>
@@ -223,6 +223,7 @@ function SectionDivider({ label, count, scanning }: { label: string; count?: num
 
 // ── Основная страница ─────────────────────────────────────────────────────────
 export function WavePage() {
+  const t = useT();
   const oauthToken    = useUIStore((s) => s.oauthToken);
   const likedTrackIds = useUIStore((s) => s.likedTrackIds);
   const playTrack     = usePlayerStore((s) => s.playTrack);
@@ -234,7 +235,7 @@ export function WavePage() {
   // Используем ref чтобы избежать stale closure в subscribe
   const [waveState, setWaveState] = useState<WaveState>(() => waveManager.getCurrentState());
   const [loading, setLoading]     = useState(false);
-  const sidebarAnimRef            = useGridSidebarAnim();
+
 
   // Считаем isStarted из самого стейта — не отдельный флаг который может рассинхронизироваться
   const isStarted   = waveState.isAutonomous || waveState.queue.length > 0;
@@ -260,12 +261,6 @@ export function WavePage() {
     return () => { setWaveMode(false); };
   }, [isStarted, setWaveMode]);
 
-  // Авто-старт: если кеш есть — тихо начинаем без клика
-  useEffect(() => {
-    if (oauthToken && waveState.queue.length > 0 && waveState.isAutonomous) {
-      // Уже есть очередь из кеша — всё ок
-    }
-  }, [oauthToken, waveState.queue.length, waveState.isAutonomous]);
 
   const handleStartWave = useCallback(async () => {
     if (!oauthToken || loading) return;
@@ -323,8 +318,8 @@ export function WavePage() {
           >
             <Waves size={24} className="text-text-dim" />
           </div>
-          <p className="text-base font-semibold text-text mb-1">Нужна авторизация</p>
-          <p className="text-sm text-text-dim">Войди в аккаунт чтобы запустить Волну</p>
+          <p className="text-base font-semibold text-text mb-1">{t('wave_auth_title')}</p>
+          <p className="text-sm text-text-dim">{t('wave_auth_desc')}</p>
         </div>
       </div>
     );
@@ -344,7 +339,16 @@ export function WavePage() {
   return (
     <div>
       <WaveHeader
-        status={waveManager.getTuningStatus()}
+        status={(() => {
+          const s = waveState;
+          if (s.isGenerating) return t('wave_status_generating');
+          if (s.isDeepScanning) return t('wave_status_scanning');
+          const upcoming = s.queue.length - s.currentIndex;
+          if (s.seeds && upcoming > 0) return `${upcoming} ${t('wave_queue')}`;
+          return s.seeds && s.seeds.length > 0
+            ? `${t('wave_status_based_on')} ${s.seeds.length} ${t('wave_status_likes')}`
+            : t('wave_status_waiting');
+        })()}
         onRefresh={handleRefresh}
         isGenerating={isGenerating || waveState.isDeepScanning}
         loading={loading}
@@ -372,16 +376,13 @@ export function WavePage() {
       {showGrid && (
         <>
           <SectionDivider
-            label="В очереди"
+            label={t('wave_queue')}
             count={upcomingTracks.length > 0 ? upcomingTracks.length : undefined}
             scanning={waveState.isDeepScanning && upcomingTracks.length < 4}
           />
           <div
             className={cn(gridClassName, 'animate-fade-in-only')}
-            ref={(el) => {
-              gridRef.current = el;
-              (sidebarAnimRef as any).current = el;
-            }}
+            ref={gridRef}
           >
             {upcomingTracks.map((track) => (
               <TrackCard
@@ -410,8 +411,8 @@ export function WavePage() {
           >
             <WaveBars active={false} size="md" color="rgb(var(--theme-text-dim))" />
           </div>
-          <p className="text-base font-semibold text-text mb-1">Треки не найдены</p>
-          <p className="text-sm text-text-dim mb-6">Попробуй добавить больше лайков</p>
+          <p className="text-base font-semibold text-text mb-1">{t('wave_no_tracks_title')}</p>
+          <p className="text-sm text-text-dim mb-6">{t('wave_no_tracks_desc')}</p>
           <button
             onClick={handleRefresh}
             className="flex items-center gap-2 px-5 py-2 rounded-full text-sm font-medium transition-all hover:scale-105"
@@ -422,7 +423,7 @@ export function WavePage() {
             }}
           >
             <RefreshCw size={13} />
-            Попробовать снова
+            {t('try_again')}
           </button>
         </div>
       )}
@@ -434,6 +435,7 @@ export function WavePage() {
 function WaveHeader({ status, onRefresh, isGenerating, loading, showRefresh = true }: {
   status: string; onRefresh: () => void; isGenerating: boolean; loading: boolean; showRefresh?: boolean;
 }) {
+  const t = useT();
   return (
     <div className="mb-7 flex items-end justify-between gap-6 animate-slide-up">
       <div>
@@ -443,7 +445,7 @@ function WaveHeader({ status, onRefresh, isGenerating, loading, showRefresh = tr
             className="font-bold leading-none text-text"
             style={{ fontSize: '2.1rem', letterSpacing: '-0.04em' }}
           >
-            Волна
+            {t('wave_header_title')}
           </h1>
         </div>
         {status && (
@@ -455,7 +457,7 @@ function WaveHeader({ status, onRefresh, isGenerating, loading, showRefresh = tr
         <button
           onClick={onRefresh}
           disabled={loading || isGenerating}
-          title="Обновить волну"
+          title={t('wave_refresh')}
           className="w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 disabled:opacity-30 hover:scale-110 text-text-dim hover:text-accent hover:bg-accent/10"
         >
           <RefreshCw

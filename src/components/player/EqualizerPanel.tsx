@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, SlidersHorizontal, RotateCcw, Power } from 'lucide-react';
 import { useEqualizer, EQ_BANDS, EQ_PRESETS, getFilters, getAudioContext } from '@/hooks/useEqualizer';
 import { cn } from '@/utils/format';
+import { useT } from '@/store/i18n';
 
 // ── Frequency response canvas ─────────────────────────────────────────────────
 function FreqCurve({ gains, enabled }: { gains: number[]; enabled: boolean }) {
@@ -182,17 +183,21 @@ function BandSlider({ label, gain, onChange, enabled }: {
             }}
           />
         )}
-        {/* Thumb */}
+        {/* Thumb — wrapper позиционирует через translate, внутренний div масштабируется */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full transition-transform hover:scale-125 active:scale-110"
-          style={{
-            top: `${thumbPct * 100}%`,
-            width: 13, height: 13,
-            background: isActive ? 'rgb(var(--theme-accent))' : 'rgb(var(--theme-text-dim) / 0.4)',
-            boxShadow: isActive ? '0 0 10px rgb(var(--theme-accent) / 0.6)' : 'none',
-            cursor: enabled ? 'grab' : 'default',
-          }}
-        />
+          className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2"
+          style={{ top: `${thumbPct * 100}%` }}
+        >
+          <div
+            className="rounded-full transition-transform hover:scale-125 active:scale-110"
+            style={{
+              width: 13, height: 13,
+              background: isActive ? 'rgb(var(--theme-accent))' : 'rgb(var(--theme-text-dim) / 0.4)',
+              boxShadow: isActive ? '0 0 10px rgb(var(--theme-accent) / 0.6)' : 'none',
+              cursor: enabled ? 'grab' : 'default',
+            }}
+          />
+        </div>
       </div>
 
       {/* Частота */}
@@ -205,6 +210,7 @@ function BandSlider({ label, gain, onChange, enabled }: {
 
 // ── Основная панель ───────────────────────────────────────────────────────────
 export function EqualizerPanel({ onClose }: { onClose: () => void }) {
+  const t = useT();
   const { eqEnabled, eqGains, setEqEnabled, setBand, applyPreset } = useEqualizer();
   const [activePreset, setActivePreset] = useState<string>(() => {
     // Определяем активный пресет по текущим gains
@@ -235,7 +241,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
 
       {/* Панель */}
       <div
-        className="fixed left-0 right-0 z-50 flex justify-center px-4 animate-fade-in"
+        className="fixed left-0 right-0 z-50 flex justify-center px-4 animate-slide-up"
         style={{ bottom: 100 }}
       >
         <div
@@ -261,7 +267,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
                 <SlidersHorizontal size={13} style={{ color: 'rgb(var(--theme-accent))' }} />
               </div>
               <span className="text-sm font-semibold" style={{ color: 'rgb(var(--theme-text))' }}>
-                Эквалайзер
+                {t('eq_title')}
               </span>
             </div>
 
@@ -279,7 +285,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
                 }}
               >
                 <Power size={11} />
-                {eqEnabled ? 'Вкл' : 'Выкл'}
+                {eqEnabled ? t('eq_enabled') : t('eq_disabled')}
               </button>
 
               {/* Reset */}
@@ -287,7 +293,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
                 onClick={() => handlePreset('Flat')}
                 className="w-7 h-7 rounded-full flex items-center justify-center opacity-70 hover:opacity-100"
                 style={{ background: 'rgb(var(--theme-surface-alt))', color: 'rgb(var(--theme-text-dim))' }}
-                title="Сбросить"
+                title={t('eq_reset')}
               >
                 <RotateCcw size={12} />
               </button>
@@ -310,7 +316,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
             {/* Слайдеры */}
             <div
               className="flex items-end gap-1 px-2"
-              style={{ opacity: eqEnabled ? 1 : 0.5, transition: 'opacity 0.2s' }}
+              style={{ opacity: eqEnabled ? 1 : 0.5, transition: 'opacity var(--dur-base) var(--ease-ios)' }}
             >
               {EQ_BANDS.map((band, i) => (
                 <BandSlider
@@ -329,7 +335,7 @@ export function EqualizerPanel({ onClose }: { onClose: () => void }) {
                 className="text-[10px] font-semibold uppercase tracking-widest mb-2.5"
                 style={{ color: 'rgb(var(--theme-text-dim) / 0.6)' }}
               >
-                Пресеты
+                {t('eq_presets')}
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {Object.keys(EQ_PRESETS).map(name => {

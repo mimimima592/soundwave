@@ -717,19 +717,15 @@ class SoundCloudAPI {
     if (!this.oauthToken) return false;
     try {
       const clientId = await this.ensureClientId();
-      const url = `${API_BASE}/me/followings/${userId}?client_id=${clientId}&app_version=${APP_VERSION}&app_locale=en`;
-      // ipcFetch → net:fetch → axios в main process.
-      // Обходит CORS и Datadome браузерного контекста, токен передаётся явно.
-      const res = await ipcFetch(url, {
-        headers: {
-          'Authorization': `OAuth ${this.oauthToken}`,
-          'Accept': 'application/json',
-          'Origin': 'https://soundcloud.com',
-          'Referer': 'https://soundcloud.com/',
-        },
-        useAuthCookies: true, // берём Datadome-куки из реальной auth-сессии
+      const url = `${API_BASE}/me/followings/${userId}`;
+      // soundcloudRequest извлекает токен из localStorage/кук apiWindow —
+      // тот же механизм что работает для /stream и других авторизованных запросов
+      const res = await window.electron?.net.soundcloudRequest(url, 'GET', {
+        client_id: clientId,
+        app_version: APP_VERSION,
+        app_locale: 'en',
       });
-      return res.ok; // 200 = подписан, 404 = не подписан
+      return res?.status === 200;
     } catch {
       return false;
     }

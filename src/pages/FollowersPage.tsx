@@ -5,12 +5,14 @@ import { scAPI } from '@/api/soundcloud';
 import type { SCUser } from '@/types/soundcloud';
 import { PageHeader, Spinner, EmptyState, UserRow, RowSkeleton } from '@/components/common/UI';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useT } from '@/store/i18n';
 
 const INITIAL_LIMIT = 50;
 
 export function FollowersPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const t = useT();
   const [users, setUsers] = useState<SCUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -64,8 +66,8 @@ export function FollowersPage() {
   return (
     <div>
       <PageHeader
-        title="Подписчики"
-        subtitle={targetUser ? targetUser.username : 'Загрузка...'}
+        title={t('followers_title')}
+        subtitle={targetUser ? targetUser.username : t('loading')}
       />
 
       {loading && (
@@ -74,10 +76,10 @@ export function FollowersPage() {
         </div>
       )}
 
-      {error && <EmptyState title="Ошибка загрузки" description={error} />}
+      {error && <EmptyState title={t('error_loading')} description={error} />}
 
       {!loading && !error && users.length === 0 && (
-        <EmptyState icon={<User size={40} />} title="Нет подписчиков" description="У этого пользователя пока нет подписчиков" />
+        <EmptyState icon={<User size={40} />} title={t('followers_empty_title')} description={t('followers_empty_desc')} />
       )}
 
       {!loading && !error && users.length > 0 && (
